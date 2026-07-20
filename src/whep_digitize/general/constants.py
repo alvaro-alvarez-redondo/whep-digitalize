@@ -1,0 +1,439 @@
+"""Centralized pipeline constants — the Python port of ``get_pipeline_constants()``.
+
+This module is the single source of truth for every literal the pipeline depends on
+(regex patterns, column groups, canonical ordering, post-processing rule settings,
+performance thresholds, path names, defaults). It mirrors
+``r/0-general_pipeline/01-setup/01-constants.R``.
+
+Design notes (Python-native divergences from the R original, all deliberate):
+
+* Constants are immutable nested :func:`dataclasses.dataclass` (``frozen=True``);
+  sequences are tuples and mappings are :class:`types.MappingProxyType`. This enforces
+  the R contract "treat constants as immutable" at the type level.
+* :func:`get_pipeline_constants` is memoized with :func:`functools.lru_cache`, mirroring
+  the R global cache (``.pipeline_constants_cache``).
+* The R ``Latin-ASCII; Lower`` transliteration is not stored as a constant — it is
+  implemented in :mod:`whep_digitize.general.helpers.strings` via ``anyascii``. See the
+  parity note in ``.claude/docs/r-to-python-mapping.md``.
+* R runtime-only constants are dropped: source-time auto-run option names (Python uses
+  explicit calls), the declared R-package list (``uv`` owns dependencies), and the ANSI
+  progress palette (``rich`` handles theming).
+* The R ``export_config$data_suffix = ".xlsx"`` was dead code (processed export always
+  wrote ``.tsv``); it is renamed :attr:`ExportConfig.processed_suffix` = ``".tsv"`` to
+  reflect actual behavior. Likewise the R ``config$defaults`` / ``constants$defaults``
+  name collision is removed — all operational defaults live in :class:`Defaults`.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+from functools import lru_cache
+from types import MappingProxyType
+
+# Column tuples reused across several constant groups. Defined at module level so they
+# can serve as immutable dataclass field defaults without a factory.
+FIXED_EXPORT_COLUMNS: tuple[str, ...] = (
+    "hemisphere",
+    "continent",
+    "polity",
+    "commodity",
+    "variable",
+    "unit",
+    "notes",
+    "footnotes",
+    "yearbook",
+    "document",
+)
+AUDIT_COLUMNS: tuple[str, ...] = (
+    "continent",
+    "polity",
+    "commodity",
+    "variable",
+    "unit",
+    "yearbook",
+    "document",
+)
+
+
+@dataclass(frozen=True, slots=True)
+class Patterns:
+    """Regex patterns. Kept as Python raw strings (``re`` / polars ``.str`` compatible)."""
+
+    normalize_non_alnum: str = r"[^a-z0-9]+"
+    normalize_already_clean: str = r"^([a-z0-9]+( [a-z0-9]+)*)?$"
+    header_normalize_whitespace: str = r"\s+"
+    header_normalize_separator_spacing: str = r"\s*([/-])\s*"
+    header_normalize_non_alnum: str = r"[^a-z0-9\-/]+"
+    header_normalize_multi_underscore: str = r"_{2,}"
+    header_normalize_trim_underscore: str = r"^_+|_+$"
+    header_normalize_fast_path: str = r"^[a-z0-9](?:[a-z0-9/_-]*[a-z0-9])?$"
+    year_column: str = r"^\d{4}(-\d{4})?$"
+    yearbook_token_4digit: str = r"^\d{4}$"
+    footnote_non_alnum: str = r"[^a-z0-9 ;/*().,#%:-]+"
+    file_extension: str = r"\.[a-z0-9]+$"
+
+
+@dataclass(frozen=True, slots=True)
+class HeaderNormalization:
+    """Header-canonicalization replacements and the source->canonical alias map."""
+
+    whitespace_replacement: str = " "
+    # R used the ``$1`` backreference; Python ``re`` uses ``\1``.
+    separator_replacement: str = r"\1"
+    non_alnum_replacement: str = "_"
+    trim_underscore_replacement: str = ""
+    canonical_aliases: Mapping[str, str] = field(
+        default_factory=lambda: MappingProxyType({"country": "polity"})
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class Performance:
+    """Performance thresholds. ``import_parallel_workers`` accepts ``"auto"`` or an int."""
+
+    normalize_unique_min_n: int = 256
+    normalize_unique_sample_n: int = 2048
+    normalize_unique_ratio_threshold: float = 0.85
+    import_workbook_batch_size: int = 32
+    import_parallel_workers: str | int = "auto"
+    import_parallel_workers_auto_token: str = "auto"
+    import_parallel_workers_auto_max: int = 8
+    import_future_scheduling: int = 4
+
+
+@dataclass(frozen=True, slots=True)
+class Defaults:
+    """Operational default values (placeholders for unknown/blank metadata)."""
+
+    unknown_document: str = "(unknown_document)"
+    unknown_commodity: str = "(unknown_commodity)"
+    list_blank_label: str = "(blank)"
+    unknown_filename: str = "unknown"
+    value_column: str = "value"
+    # R ``config$defaults$notes_value = NA_character_`` -> Python None.
+    notes_value: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ObjectNames:
+    """Canonical names of the per-stage data objects (and diagnostic bags)."""
+
+    raw: str = "whep_data_raw"
+    wide_raw: str = "whep_data_wide_raw"
+    clean: str = "whep_data_clean"
+    normalize: str = "whep_data_normalize"
+    harmonize: str = "whep_data_harmonize"
+    export_paths: str = "export_paths"
+    collected_reading_errors: str = "collected_reading_errors"
+    collected_errors: str = "collected_errors"
+    collected_warnings: str = "collected_warnings"
+
+
+@dataclass(frozen=True, slots=True)
+class Columns:
+    """Column-role groups. ``id_vars`` (R ``columns$id``) is the wide->long melt id set."""
+
+    base: tuple[str, ...] = ("continent", "polity", "unit", "footnotes")
+    id_vars: tuple[str, ...] = (
+        "commodity",
+        "variable",
+        "unit",
+        "hemisphere",
+        "continent",
+        "polity",
+        "footnotes",
+    )
+    value: tuple[str, ...] = ("year", "value")
+    system: tuple[str, ...] = ("notes", "yearbook", "document")
+
+
+@dataclass(frozen=True, slots=True)
+class Sorting:
+    """Canonical business-key row order applied by ``sort_pipeline_stage_dt``."""
+
+    stage_row_order: tuple[str, ...] = (
+        "hemisphere",
+        "continent",
+        "polity",
+        "commodity",
+        "variable",
+        "unit",
+        "year",
+        "value",
+        "notes",
+        "footnotes",
+        "yearbook",
+        "document",
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class Files:
+    """Canonical workbook file names."""
+
+    raw_data: str = "whep_data_raw.xlsx"
+    wide_raw_data: str = "whep_data_wide_raw.xlsx"
+    long_raw_data: str = "whep_data_long_raw.xlsx"
+
+
+@dataclass(frozen=True, slots=True)
+class PathNames:
+    """Relative directory names under ``data/`` (assembled into absolute paths by Config)."""
+
+    data_dir: str = "data"
+    import_dir: str = "1-import"
+    import_raw_dir: str = "10-raw_import"
+    import_clean_dir: str = "11-clean_import"
+    import_standardize_dir: str = "12-standardize_import"
+    import_harmonize_dir: str = "13-harmonize_import"
+    postpro_dir: str = "2-postpro"
+    export_dir: str = "3-export"
+    export_lists_dir: str = "lists"
+    export_processed_dir: str = "processed_data"
+    checkpoints_dir: str = ".checkpoints"
+
+
+@dataclass(frozen=True, slots=True)
+class Tokens:
+    """Filename token-parsing constants. ``commodity_start_index`` is 1-based (R)."""
+
+    # R uses parts[7:] (1-based). Python slicing subtracts 1: parts[commodity_start_index-1:].
+    commodity_start_index: int = 7
+
+
+@dataclass(frozen=True, slots=True)
+class TimeUnits:
+    """Time conversion factors for elapsed-time formatting."""
+
+    seconds_per_minute: int = 60
+    seconds_per_hour: int = 3600
+
+
+@dataclass(frozen=True, slots=True)
+class RuleMatchNormalization:
+    """When rule match-keys are normalized, and which columns are matched raw."""
+
+    apply_once_before_stage: bool = True
+    apply_each_pass: bool = False
+    excluded_columns: tuple[str, ...] = ("year", "value", "yearbook", "document")
+
+
+@dataclass(frozen=True, slots=True)
+class TargetUpdateStrategies:
+    """Target-update strategy config. ``notes`` concatenates; everything else last-wins."""
+
+    default: str = "last_rule_wins"
+    concatenate_delimiter: str = "; "
+    by_column: Mapping[str, str] = field(
+        default_factory=lambda: MappingProxyType({"notes": "concatenate"})
+    )
+    supported: tuple[str, ...] = ("last_rule_wins", "concatenate")
+
+
+@dataclass(frozen=True, slots=True)
+class TargetUpdateFastPath:
+    """Fast-path toggles for target updates."""
+
+    last_rule_wins_unique_row_id: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class MultiPass:
+    """Multi-pass clean/harmonize convergence controls."""
+
+    enabled_by_stage: Mapping[str, bool] = field(
+        default_factory=lambda: MappingProxyType({"clean": True, "harmonize": True})
+    )
+    max_passes_by_stage: Mapping[str, int] = field(
+        default_factory=lambda: MappingProxyType({"clean": 10, "harmonize": 10})
+    )
+    cycle_policy: str = "warn"
+    supported_cycle_policies: tuple[str, ...] = ("warn", "abort")
+    diagnostics_verbosity: str = "compact"
+    supported_diagnostics_verbosity: tuple[str, ...] = ("compact", "verbose")
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeCache:
+    """Rule-payload bundle disk+memory cache (disabled by default).
+
+    The R cache used ``.rds``; the Python port uses ``.parquet`` for portability.
+    """
+
+    enabled: bool = False
+    cache_file_name: str = "stage_payload_bundle_cache.parquet"
+    max_entries: int = 128
+
+
+@dataclass(frozen=True, slots=True)
+class SchemaValidationCache:
+    """Memoization of already-validated rule schemas (disabled by default)."""
+
+    enabled: bool = False
+    max_entries: int = 1024
+
+
+@dataclass(frozen=True, slots=True)
+class Standardization:
+    """Unit-standardization rule-file settings."""
+
+    excluded_sheet_names: tuple[str, ...] = ("master_unit",)
+
+
+@dataclass(frozen=True, slots=True)
+class Postpro:
+    """Post-processing settings: rule engine, multi-pass, caches, and audit file names."""
+
+    audit_dir_name: str = "audit"
+    diagnostics_dir_name: str = "diagnostics"
+    templates_dir_name: str = "templates"
+    runtime_cache_dir_name: str = "runtime_cache"
+    clean_harmonize_template_file_name: str = "clean_harmonize_template.xlsx"
+    standardize_units_template_file_name: str = "standardize_units_template.xlsx"
+    data_validation_audit_suffix: str = "_data_validation_audit.xlsx"
+    clean_audit_file_name: str = "clean_audit.xlsx"
+    harmonize_audit_file_name: str = "harmonize_audit.xlsx"
+    standardize_audit_file_name: str = "standardize_audit.xlsx"
+    last_rule_wins_overwrites_file_name: str = "postpro_last_rule_wins_overwrites.xlsx"
+    rule_match_wildcard_token: str = "__ANY__"
+    # The 6 canonical rule columns (R get_canonical_rule_columns()); value_source optional.
+    canonical_rule_columns: tuple[str, ...] = (
+        "column_source",
+        "value_source_raw",
+        "value_source",
+        "column_target",
+        "value_target_raw",
+        "value_target",
+    )
+    stage_names: tuple[str, ...] = ("clean", "harmonize")
+    standardization: Standardization = field(default_factory=Standardization)
+    rule_match_normalization: RuleMatchNormalization = field(default_factory=RuleMatchNormalization)
+    target_update_strategies: TargetUpdateStrategies = field(default_factory=TargetUpdateStrategies)
+    target_update_fast_path: TargetUpdateFastPath = field(default_factory=TargetUpdateFastPath)
+    multi_pass: MultiPass = field(default_factory=MultiPass)
+    runtime_cache: RuntimeCache = field(default_factory=RuntimeCache)
+    schema_validation_cache: SchemaValidationCache = field(default_factory=SchemaValidationCache)
+
+
+@dataclass(frozen=True, slots=True)
+class ErrorHighlightStyle:
+    """Excel style for invalid audit cells (mirrors the R openxlsx style)."""
+
+    fg_fill: str = "#FFB84D"
+    font_colour: str = "#000000"
+    text_decoration: str = "bold"
+    border: str = "TopBottomLeftRight"
+    border_colour: str = "#6D4C41"
+    border_style: str = "thick"
+
+
+@dataclass(frozen=True, slots=True)
+class ExportConfig:
+    """Export settings: which columns become unique lists, which layers are written."""
+
+    list_suffix: str = "_unique.xlsx"
+    lists_to_export: tuple[str, ...] = FIXED_EXPORT_COLUMNS
+    lists_workbook_name: str = "whep_unique_lists_raw"
+    export_layers: tuple[str, ...] = ("harmonize",)
+    # R export_config$data_suffix=".xlsx" was dead; processed export writes .tsv.
+    processed_suffix: str = ".tsv"
+    error_highlight: ErrorHighlightStyle = field(default_factory=ErrorHighlightStyle)
+
+
+@dataclass(frozen=True, slots=True)
+class Progress:
+    """User-facing progress text. Presentation (colors/handlers) is left to ``rich``."""
+
+    update_interval: float = 0.2
+    pulse_template: str = "{stage} pass {index}"
+    stage_labels: Mapping[str, str] = field(
+        default_factory=lambda: MappingProxyType(
+            {
+                "general": "general",
+                "import": "import",
+                "postpro": "post-process",
+                "export": "export",
+            }
+        )
+    )
+    messages: Mapping[str, Mapping[str, str]] = field(
+        default_factory=lambda: MappingProxyType(
+            {
+                "general": MappingProxyType(
+                    {
+                        "load_config": "loading pipeline configuration",
+                        "create_dirs": "creating required directories",
+                    }
+                ),
+                "import": MappingProxyType(
+                    {
+                        "reading": "reading source files",
+                        "read_file": "reading {name}",
+                        "transforming": "transforming source files",
+                        "transform_file": "transforming {name}",
+                        "splitting": "splitting validation groups",
+                        "validating": "validating transformed records",
+                    }
+                ),
+                "postpro": MappingProxyType(
+                    {
+                        "audit": "auditing raw data",
+                        "init_dirs": "initializing audit directories",
+                        "templates": "generating rule templates",
+                        "collect_preflight": "collecting preflight checks",
+                        "assert_preflight": "asserting preflight checks",
+                        "clean": "running clean layer",
+                        "standardize": "running standardize layer",
+                        "harmonize": "running harmonize layer",
+                        "persist": "persisting diagnostics",
+                    }
+                ),
+                "export": MappingProxyType(
+                    {
+                        "processed": "processed workbooks",
+                        "lists": "lists workbooks",
+                    }
+                ),
+            }
+        )
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class Constants:
+    """The complete, immutable pipeline constant set. Access via :func:`get_pipeline_constants`."""
+
+    dataset_default_name: str = "whep_data_raw"
+    timestamp_format_utc: str = "%Y-%m-%dT%H:%M:%SZ"
+    na_placeholder: str = "..NA_INTERNAL.."
+    na_match_key: str = "..NA_MATCH_KEY.."
+    fixed_export_columns: tuple[str, ...] = FIXED_EXPORT_COLUMNS
+    audit_columns: tuple[str, ...] = AUDIT_COLUMNS
+    patterns: Patterns = field(default_factory=Patterns)
+    header_normalization: HeaderNormalization = field(default_factory=HeaderNormalization)
+    performance: Performance = field(default_factory=Performance)
+    defaults: Defaults = field(default_factory=Defaults)
+    object_names: ObjectNames = field(default_factory=ObjectNames)
+    columns: Columns = field(default_factory=Columns)
+    sorting: Sorting = field(default_factory=Sorting)
+    files: Files = field(default_factory=Files)
+    paths: PathNames = field(default_factory=PathNames)
+    tokens: Tokens = field(default_factory=Tokens)
+    time_units: TimeUnits = field(default_factory=TimeUnits)
+    postpro: Postpro = field(default_factory=Postpro)
+    export_config: ExportConfig = field(default_factory=ExportConfig)
+    progress: Progress = field(default_factory=Progress)
+
+
+@lru_cache(maxsize=1)
+def get_pipeline_constants() -> Constants:
+    """Return the cached, immutable pipeline constants.
+
+    Mirrors the R ``get_pipeline_constants()`` global cache: the :class:`Constants`
+    instance is built once and reused. Treat the result as immutable (it is frozen).
+
+    Returns:
+        The singleton :class:`Constants` instance.
+    """
+    return Constants()

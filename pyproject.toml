@@ -1,0 +1,120 @@
+[project]
+name = "whep-digitize"
+version = "0.1.0"
+description = "WHEP digitization pipeline — Python/Polars port of whep-digitalization (R)."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "WHEP" }]
+keywords = ["whep", "etl", "polars", "pipeline", "digitization"]
+
+# Runtime dependencies. Chosen as Python-native equivalents of the R stack
+# (see .claude/docs/r-to-python-mapping.md). Kept deliberately lean.
+dependencies = [
+    "polars>=1.0",          # data.table equivalent: columnar, multi-threaded, deterministic
+    "pydantic>=2.7",        # checkmate/validation equivalent for the Config model
+    "pydantic-settings>=2.3", # whep.* runtime options via WHEP_* env vars
+    "rich>=13.7",           # cli + progressr equivalent (console, progress bars)
+    "typer>=0.12",          # CLI front-end for run_pipeline
+    "fastexcel>=0.10",      # readxl equivalent: fast all-text .xlsx reads (calamine) for polars
+    "xlsxwriter>=3.2",      # writexl equivalent: workbook writing for polars.write_excel
+    "openpyxl>=3.1",        # openxlsx equivalent: styled per-cell audit workbooks
+    "anyascii>=0.3",        # stringi "Latin-ASCII" transliteration equivalent (see parity note)
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2",
+    "pytest-cov>=5.0",
+    "ruff>=0.6",
+    "mypy>=1.11",
+]
+
+[project.scripts]
+whep-digitize = "whep_digitize.cli:app"
+
+[project.urls]
+Homepage = "https://github.com/eduaguilera/whep"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/whep_digitize"]
+
+# ---------------------------------------------------------------------------
+# Ruff — lint + format. Enforces the engineering standards from CLAUDE.md:
+# snake_case (N), docstrings mirroring roxygen2 (D), pathlib over os.path (PTH).
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",    # pycodestyle
+    "F",         # pyflakes
+    "I",         # isort
+    "N",         # pep8-naming (snake_case enforcement)
+    "UP",        # pyupgrade
+    "B",         # flake8-bugbear
+    "A",         # flake8-builtins
+    "C4",        # flake8-comprehensions
+    "SIM",       # flake8-simplify
+    "PTH",       # flake8-use-pathlib (mirror fs/here -> pathlib)
+    "ARG",       # unused arguments
+    "RUF",       # ruff-specific
+    "D",         # pydocstyle (docstrings, mirror roxygen2 per-function docs)
+]
+ignore = [
+    "D203",  # conflicts with D211 (no blank line before class docstring)
+    "D213",  # conflicts with D212 (multi-line summary on first line)
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["D100", "D101", "D102", "D103", "D104"]  # tests need not be documented
+
+# ---------------------------------------------------------------------------
+# mypy — strict typing. The Python analogue of the R contract assertions.
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+disallow_untyped_defs = true
+files = ["src", "tests"]
+
+# Third-party modules without type stubs that Stage 0 imports. Stage migrations add
+# their own entries (e.g. fastexcel for ingest) as they introduce those imports.
+[[tool.mypy.overrides]]
+module = ["anyascii.*"]
+ignore_missing_imports = true
+
+# ---------------------------------------------------------------------------
+# pytest — the ground-truth metric (mirror of testthat). pythonpath=src lets
+# tests import whep_digitize without an editable install.
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "--strict-markers --strict-config -ra"
+markers = [
+    "parity: tests that compare Python output against R golden outputs",
+    "slow: long-running tests (full-dataset / benchmark-scale)",
+]
+
+[tool.coverage.run]
+source = ["whep_digitize"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
