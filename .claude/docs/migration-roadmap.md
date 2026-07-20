@@ -5,6 +5,10 @@ phases, milestones, the dependency DAG, per-module priority/risk/effort, paralle
 and the parity strategy. Companion to [codebase-map.md](codebase-map.md) (per-module status)
 and [r-to-python-mapping.md](r-to-python-mapping.md) (how to port + parity risks).
 
+> **Executing this?** [session-prompts.md](session-prompts.md) turns this roadmap into
+> ready-to-paste, one-per-session kickoff prompts (recommended workflow: one fresh session
+> per module/cluster, driven by the `migrate-module` + `parity-check` skills).
+
 ## Guiding principles
 
 1. **Contract-first.** Cross-stage contracts (`contracts.py`) are fixed in Phase 0, so a

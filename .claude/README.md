@@ -5,7 +5,7 @@ Start at [CLAUDE.md](../CLAUDE.md) (auto-loaded). Files here are read on demand.
 ## Structure
 
 - `docs/` — architecture, codebase-map, constants-and-options, conventions, common-changes,
-  **r-to-python-mapping**, **migration-roadmap**
+  **r-to-python-mapping**, **migration-roadmap**, **session-prompts** (paste-ready per-session kickoffs)
 - `guidelines/` — migration, refactoring, performance, testing, constants
 - `skills/` — `migrate-module`, `parity-check`, `migration-status` (invocable procedures)
 - `commands/autocode.md` — the `/autocode` optimization loop
