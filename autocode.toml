@@ -1,0 +1,40 @@
+[project]
+language = "python"
+source_files = ["src/**/*.py"]
+read_only = ["tests/**", "benchmarks/**", "tests/golden/**"]
+
+[metrics]
+
+# Tests are the ground truth (mirrors testthat). Highest weight — breaking tests, including
+# @pytest.mark.parity tests, is never acceptable.
+[metrics.tests]
+command = ".venv/Scripts/python.exe -m pytest --tb=short -q 2>&1"
+parser = "pytest"
+weight = 0.6
+direction = "up"
+
+# Lint issue count (ruff). 'All checks passed!' yields no match -> treated as 0.
+[metrics.quality]
+command = ".venv/Scripts/python.exe -m ruff check . 2>&1"
+parser = "regex"
+pattern = "Found (\\d+) error"
+weight = 0.2
+direction = "down"
+
+# Static-type error count (mypy strict). 'Success: ...' yields no match -> treated as 0.
+[metrics.types]
+command = ".venv/Scripts/python.exe -m mypy 2>&1"
+parser = "regex"
+pattern = "Found (\\d+) error"
+weight = 0.2
+direction = "down"
+
+# Performance: full-pipeline wall-clock. ENABLE in Phase 6 once stages 1-3 are migrated and
+# benchmarks/bench.py exists (prints "PIPELINE_SECONDS: <n>"). Freeze the input dataset for
+# A/Bs (the live dataset grows). Give it weight and re-normalize the others when enabling.
+# [metrics.performance]
+# command = ".venv/Scripts/python.exe benchmarks/bench.py 2>&1"
+# parser = "regex"
+# pattern = "PIPELINE_SECONDS:\\s*([\\d.]+)"
+# weight = 0.3
+# direction = "down"

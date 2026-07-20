@@ -1,0 +1,9 @@
+# Fast local checks on commit. Heavier gates (mypy, pytest) run in CI.
+# Install once with: uv run pre-commit install   (or: pip install pre-commit && pre-commit install)
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.22
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format

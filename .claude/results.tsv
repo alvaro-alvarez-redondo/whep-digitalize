@@ -1,0 +1,2 @@
+commit	composite	tests	quality	types	performance	status	description
+foundation	100.0	100.0	0	0	0.0	baseline	Phase 0 foundation + Stage 0: 61 tests pass, ruff 0, mypy 0 (strict)
