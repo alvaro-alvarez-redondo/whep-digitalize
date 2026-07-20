@@ -34,10 +34,10 @@ data/
 *.log
 scratch/
 
-# --- Golden parity fixtures (large; regenerated from R) ---
-tests/golden/**/*.tsv
-tests/golden/**/*.xlsx
-tests/golden/**/*.parquet
+# --- Golden parity outputs (regenerated from R via tests/parity/capture.py; never committed) ---
+# The frozen INPUT fixtures under tests/fixtures/ ARE committed; only the R-derived outputs
+# here are ignored (any format: .json/.tsv/.parquet/.xlsx).
+tests/golden/
 
 # --- OS / editor ---
 .DS_Store
