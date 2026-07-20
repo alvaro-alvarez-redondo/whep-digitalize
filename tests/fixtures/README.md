@@ -53,6 +53,21 @@ Every listed migration edge case is covered:
 The last row is the point of highest parity risk (transliteration divergence between Python
 `anyascii` and R ICU `Latin-ASCII`). See `.claude/docs/r-to-python-mapping.md`.
 
+### `file_metadata_inputs.json`
+
+A JSON array of file-path strings fed to `extract_file_metadata` (`10-metadata.R` →
+`ingest/file_io/metadata.py`). The first six are the real `corpus/` workbook paths
+(relative, forward-slash); the rest force the positional-parsing edge cases:
+
+| Edge case                         | Element |
+|-----------------------------------|---------|
+| real corpus paths (basename via `path_file`) | the six `tests/fixtures/corpus/.../*.xlsx` |
+| `<=6` tokens → no commodity       | `r_fao_1961_crops_1_1.xlsx` |
+| no 4-digit token → no yearbook    | `r_fao_crops_wheat.xlsx` |
+| `<2` tokens → no yearbook         | `2020.xlsx` |
+| first 4-digit token wins          | `r_fao_1961_a_b_c_2000_wheat.xlsx` → yearbook `fao_1961`, commodity `2000_wheat` |
+| non-ASCII name (`is_ascii=FALSE` + error message) | `r_fao_1949_a_b_c_wheat_café.xlsx` |
+
 ## Regenerating goldens
 
 Goldens are derived from these fixtures via the R source of truth:

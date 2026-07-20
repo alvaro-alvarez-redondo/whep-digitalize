@@ -60,8 +60,8 @@ Public: `runner.run_import_pipeline(config, options=None) -> ImportResult`. Port
 
 | Planned module | Functions to port | R source | Risk |
 |----------------|-------------------|----------|------|
-| `file_io/discovery.py` | `discover_files` | `10-discovery.R` | LOW |
-| `file_io/metadata.py` | `extract_file_metadata`, `build_empty_file_metadata` | `10-metadata.R` | MEDIUM |
+| `file_io/discovery.py` **[done]** | `discover_files`, `discover_pipeline_files` | `10-discovery.R` | LOW |
+| `file_io/metadata.py` **[done]** | `extract_file_metadata`, `build_empty_file_metadata` | `10-metadata.R` | MEDIUM |
 | `reading/read_utils.py` | read-result `(data, errors)` type + guards | `11-read-utils.R` | LOW |
 | `reading/sheet_read.py` | `read_excel_sheet`, `read_file_sheets`, `compute_non_empty_base_rows` | `11-sheet-read.R` | MEDIUM |
 | `reading/header_normalization.py` | `normalize_header_names`, `validate_header_normalization`, `resolve_canonical_header_renames` | `11-header-normalization.R` | **HIGH** |

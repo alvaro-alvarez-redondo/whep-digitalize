@@ -72,6 +72,34 @@ matched byte-for-byte by the polars port over every edge case (incl. `ß`→`ss`
 .venv/Scripts/python.exe -m pytest -m parity                        # verify Python matches R
 ```
 
+## Phase 1a — ingest file_io (discovery + metadata) — ✅ complete (2026-07-20)
+
+First ingest modules ported (`r/1-import_pipeline/10-file_io/`), bottom-up per the DAG:
+
+- **`ingest/file_io/metadata.py`** (`10-metadata.R`) — `extract_file_metadata` +
+  `build_empty_file_metadata`. Reuses `helpers.tokens` (`extract_yearbook` / `extract_commodity`)
+  for the positional convention (yearbook = token 2 + first `^\d{4}$` token; commodity =
+  tokens 7+, extension stripped from last). Basename via `PurePosixPath(p).name`; ASCII flag
+  via `str.isascii()` (== R `stringi::stri_enc_isascii`); non-ASCII → verbatim error message.
+  Frames built with an explicit `pl.Schema` so all-null token columns stay `String`, not `Null`.
+- **`ingest/file_io/discovery.py`** (`10-discovery.R`) — `discover_files` +
+  `discover_pipeline_files`. `Path.rglob` + `is_file()` + case-sensitive `.xlsx` `endswith`
+  (R globs `*.xlsx` case-sensitively). Emits forward-slash paths (`as_posix`) **sorted by full
+  path string** to match `fs::dir_ls` C-locale/radix order deterministically (parity risk #7).
+  Empty folder → `warnings.warn` + empty frame (R `cli_warn`).
+
+**Parity** — new `file_metadata` `CaptureSpec` + committed fixture
+`synthetic/file_metadata_inputs.json` (6 real corpus paths + edge cases: `<=6` tokens →
+no commodity, no 4-digit token / `<2` tokens → no yearbook, first-year-wins, non-ASCII
+`café`). Golden captured per output column (atomic `write_golden`); all 6 columns matched
+byte-for-byte. `fs` confirmed installed in the R 4.6.0 env. Discovery's filesystem behaviour
+(sort order, posix form, recursion/filtering, empty/blank/missing) covered by functional
+tests in `tests/ingest/test_file_io.py` (verified against R `fs::dir_ls` ground truth).
+
+**Gates:** ruff clean · mypy strict clean (56 files) · **88 tests pass** (25 new: 19
+functional + 6 parity). Pre-existing `ruff format` nit in `tests/parity/r_harness.py` left
+untouched (out of scope).
+
 ## Baseline metrics (autocode)
 
 | metric | value |
@@ -83,9 +111,15 @@ matched byte-for-byte by the polars port over every edge case (incl. `ß`→`ss`
 
 ## Next
 
-Per [migration-roadmap.md](docs/migration-roadmap.md): start the two parallel high-value
-tracks — **ingest** (Stage 1; begin with `header_normalization` + `validate`, both HIGH) and
-the **postpro rule engine** (Stage 2 critical path; begin bottom-up with `matching_strategy`
-→ `matching_values`). Use the `migrate-module` + `parity-check` skills. The parity harness and
-frozen corpus are now in place (Phase 0.5): add a `CaptureSpec` to `tests/parity/registry.py`
-per new module and reuse `tests/fixtures/corpus/` as the raw root for ingest captures.
+Per [migration-roadmap.md](docs/migration-roadmap.md). Ingest file_io (1a) is now done.
+Continue the two parallel high-value tracks:
+
+- **Ingest (Stage 1):** next is 1b reading — start with `header_normalization` (HIGH:
+  transliteration + ordered regex chain), then `read_utils` / `sheet_read` / `batching`; and
+  1d `validate` (HIGH, independent against fixtures).
+- **Postpro rule engine (Stage 2 critical path):** bottom-up `matching_strategy` →
+  `matching_values` → `target_apply`.
+
+Use the `migrate-module` + `parity-check` skills. Add a `CaptureSpec` to
+`tests/parity/registry.py` per new module; reuse `tests/fixtures/corpus/` as the raw root for
+ingest captures (the file_metadata capture already reads corpus-relative paths from it).
