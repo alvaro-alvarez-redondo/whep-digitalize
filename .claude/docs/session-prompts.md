@@ -6,6 +6,12 @@ project context, so a fresh session only needs the prompt below.
 
 ## How to use
 
+0. **Ensure the session can read the R source repo.** Every prompt reads the R module it
+   ports, which lives in the **sibling** repo
+   `C:/Users/Usuario/Nextcloud/whep_alvaro/digitalization/whep-digitalization/` (the source
+   of truth). Open the session with **both** repos accessible (add the R repo as a working
+   directory / allowed path). Ground truth for correctness is the R source + the parity test
+   — the prompts are pointers, not full specs.
 1. Open a fresh session **in the `whep-digitize` project** (`cd` into this repo).
 2. Paste the prompt for the session you're doing. It drives the `migrate-module` /
    `parity-check` skills, which encode the full procedure (read R → implement → test →
