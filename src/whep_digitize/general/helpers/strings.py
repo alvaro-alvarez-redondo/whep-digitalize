@@ -27,8 +27,22 @@ _FOOTNOTE_NON_ALNUM = re.compile(_constants.patterns.footnote_non_alnum)
 _UNKNOWN_FILENAME = _constants.defaults.unknown_filename
 
 
-def _to_ascii_lower(text: str) -> str:
-    """Transliterate to ASCII and lowercase (R ``"Latin-ASCII; Lower"`` equivalent)."""
+def transliterate_ascii_lower(text: str) -> str:
+    """Transliterate to ASCII and lowercase (R ``stri_trans_general(x, "Latin-ASCII; Lower")``).
+
+    The single implementation of the pipeline's transliteration, shared by match-key
+    normalization (:func:`normalize_text`) and header normalization
+    (:mod:`whep_digitize.ingest.reading.header_normalization`). Both R call sites use the
+    same ``Latin-ASCII; Lower`` rule, so any ICU-vs-``anyascii`` divergence override must
+    live here to keep the two byte-identical (the top parity risk; see
+    ``.claude/docs/r-to-python-mapping.md``).
+
+    Args:
+        text: The value to transliterate.
+
+    Returns:
+        The ASCII-folded, lowercased string.
+    """
     return anyascii(text).lower()
 
 
@@ -46,7 +60,7 @@ def normalize_text(text: str | None) -> str | None:
     """
     if text is None:
         return None
-    collapsed = _NORMALIZE_NON_ALNUM.sub(" ", _to_ascii_lower(text))
+    collapsed = _NORMALIZE_NON_ALNUM.sub(" ", transliterate_ascii_lower(text))
     return collapsed.strip()
 
 
@@ -79,7 +93,7 @@ def clean_footnote(text: str | None) -> str | None:
     """
     if text is None:
         return None
-    cleaned = _FOOTNOTE_NON_ALNUM.sub(" ", _to_ascii_lower(text))
+    cleaned = _FOOTNOTE_NON_ALNUM.sub(" ", transliterate_ascii_lower(text))
     return cleaned.strip()
 
 

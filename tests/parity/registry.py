@@ -17,6 +17,35 @@ _STRING_NORMALIZATION = "r/0-general_pipeline/02-helpers/02-string-normalization
 # write_golden captures each output column of extract_file_metadata separately.
 _ASSERTIONS = "r/0-general_pipeline/02-helpers/02-assertions.R"
 _FILE_METADATA = "r/1-import_pipeline/10-file_io/10-metadata.R"
+_HEADER_NORMALIZATION = "r/1-import_pipeline/11-reading/11-header-normalization.R"
+
+# Canonical set exactly as 11-sheet-read.R builds it: unique(column_required + column_id).
+_CANON = "c('continent','polity','unit','footnotes','commodity','variable','hemisphere')"
+
+
+def _renames_expr(raw: str, part: str, alias_map: str | None = None) -> str:
+    """Build an R expression capturing one field of resolve_canonical_header_renames.
+
+    ``raw`` is an ASCII-only R character vector literal (non-ASCII stays in JSON fixtures to
+    avoid Windows script-encoding corruption); ``part`` is ``"old"`` or ``"new"``.
+    """
+    alias_arg = f", alias_map = {alias_map}" if alias_map is not None else ""
+    return (
+        f"resolve_canonical_header_renames({raw}, normalize_header_names({raw}), "
+        f"{_CANON}{alias_arg})${part}"
+    )
+
+
+# R's collision detection, replicated cli-free so the capture needs no cli::format_error.
+_VALIDATE_DUPS = (
+    "local({ nv <- normalize_header_names(c('A B','A  B','a__b','Foo','foo','A-B')); "
+    "nv <- nv[!is.na(nv) & nzchar(nv)]; "
+    "unique(nv[duplicated(nv) | duplicated(nv, fromLast = TRUE)]) })"
+)
+
+# Duplicate-alias-target scenario: two aliases both map to polity (only the first survives).
+_DEDUP_RAW = "c('Country', 'Nation', 'Continent')"
+_DEDUP_ALIAS = "c(country = 'polity', nation = 'polity')"
 
 CAPTURES: dict[str, CaptureSpec] = {
     "string_normalization": CaptureSpec(
@@ -48,6 +77,30 @@ CAPTURES: dict[str, CaptureSpec] = {
             "Positional file-name token parsing (yearbook = token 2 + first 4-digit token; "
             "commodity = tokens 7+) + ASCII check over real WHEP corpus names and edge cases "
             "(no year token, <2 tokens, first-year-wins, non-ASCII)."
+        ),
+    ),
+    "header_normalization": CaptureSpec(
+        module="header_normalization",
+        r_sources=(_GENERAL_CONSTANTS, _ASSERTIONS, _HEADER_NORMALIZATION),
+        fixture="synthetic/header_names_inputs.json",
+        exports={
+            "normalize": "normalize_header_names(values)",
+            # Canonical match + has_exact guard (commodity present verbatim) + alias fires.
+            "renames_main_old": _renames_expr("c(' Continent ', 'Country', 'commodity')", "old"),
+            "renames_main_new": _renames_expr("c(' Continent ', 'Country', 'commodity')", "new"),
+            # Alias target-present guard: 'polity' already a header -> country not renamed.
+            "renames_guarded_old": _renames_expr("c('Country', 'polity')", "old"),
+            "renames_guarded_new": _renames_expr("c('Country', 'polity')", "new"),
+            # Duplicate-alias-target guard: two aliases -> polity, only the first survives.
+            "renames_dedup_old": _renames_expr(_DEDUP_RAW, "old", _DEDUP_ALIAS),
+            "renames_dedup_new": _renames_expr(_DEDUP_RAW, "new", _DEDUP_ALIAS),
+            # Collision detection (which normalized keys collide), replicated cli-free.
+            "validate_dups": _VALIDATE_DUPS,
+        },
+        description=(
+            "Header normalization: the ordered regex chain + Latin-ASCII;Lower transliteration "
+            "(top parity risk: anyascii vs ICU on accented/unicode headers), canonical + "
+            "country->polity alias renames with all collision guards, and collision detection."
         ),
     ),
 }

@@ -64,7 +64,7 @@ Public: `runner.run_import_pipeline(config, options=None) -> ImportResult`. Port
 | `file_io/metadata.py` **[done]** | `extract_file_metadata`, `build_empty_file_metadata` | `10-metadata.R` | MEDIUM |
 | `reading/read_utils.py` | read-result `(data, errors)` type + guards | `11-read-utils.R` | LOW |
 | `reading/sheet_read.py` | `read_excel_sheet`, `read_file_sheets`, `compute_non_empty_base_rows` | `11-sheet-read.R` | MEDIUM |
-| `reading/header_normalization.py` | `normalize_header_names`, `validate_header_normalization`, `resolve_canonical_header_renames` | `11-header-normalization.R` | **HIGH** |
+| `reading/header_normalization.py` **[done]** | `normalize_header_name`, `normalize_header_names`, `validate_header_normalization`, `resolve_canonical_header_renames`, `HeaderRenames` | `11-header-normalization.R` | **HIGH** |
 | `reading/batching.py` | `split_workbook_batches`, worker resolvers, `read_workbook_batch` | `11-batching.R` | MEDIUM |
 | `transform/transform_utils.py` | `identify_year_columns`, `normalize_key_fields`, `convert_year_columns` | `12-transform-utils.R` | **HIGH** |
 | `transform/reshape.py` | `reshape_to_long` (unpivot), `add_metadata`, `transform_file_dt`, `resolve_commodity_name` | `12-reshape.R` | **HIGH** |

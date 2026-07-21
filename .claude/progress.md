@@ -100,6 +100,44 @@ tests in `tests/ingest/test_file_io.py` (verified against R `fs::dir_ls` ground 
 functional + 6 parity). Pre-existing `ruff format` nit in `tests/parity/r_harness.py` left
 untouched (out of scope).
 
+## Phase 1b (partial) — ingest reading: header normalization — ✅ complete (2026-07-21)
+
+Ported `11-header-normalization.R` → `ingest/reading/header_normalization.py` (HIGH risk,
+parity-critical):
+
+- **`normalize_header_names`** (+ singular `normalize_header_name`) — the exact ordered
+  chain: trim → collapse whitespace → strip padding around `/`/`-` → `Latin-ASCII; Lower`
+  transliterate → non-`[a-z0-9-/]` runs to `_` → collapse `_` → trim `_`. Reproduces the R
+  fast-path short-circuit (already-clean vector with no collapsible/leading/trailing `_`
+  returns verbatim). `None`/`NA` pass through positionally.
+- **`resolve_canonical_header_renames`** → `HeaderRenames(old, new)` — canonical match +
+  `country`→`polity` alias with ALL R collision guards ported exactly: `has_exact` skip,
+  alias target-present, alias-source-already-renamed, and `duplicated(alias_new)` (computed
+  over the full surviving vector, ANDed with the `%in% old_names` filter — a sequential
+  short-circuit would diverge). Drops `old == new` no-ops.
+- **`validate_header_normalization`** — collision detection via `Counter` (first-appearance
+  order). Returns a deterministic message (sheet, file basename, colliding keys); the R
+  `cli::format_error` box formatting is intentionally not reproduced (errors use the Python
+  messaging convention).
+
+**Shared transliteration:** promoted `strings._to_ascii_lower` → public
+`strings.transliterate_ascii_lower` (behaviour-preserving) so header keys and match keys
+fold through ONE implementation — the single home for any future ICU-divergence override.
+
+**Parity (top project risk de-risked):** new `header_normalization` `CaptureSpec` + committed
+fixture `synthetic/header_names_inputs.json` (accents/ligatures/symbols: café, São, Zürich,
+Ñoño, naïve, Øresund, Åland, groß, **½**, œuvre, æsir + whitespace/separator/punctuation/
+underscore/empty/fast-path cases). Divergence hunt: `anyascii` matched R ICU `Latin-ASCII`
+**byte-for-byte on every header, zero divergences** — including `½`→`1/2_unit` (ASCII `/`
+preserved by the header pattern, the case masked in string-normalization). **No override
+needed.** Renames goldens cover all guards; `validate_dups` covers detection (captured
+cli-free). Non-ASCII kept in the JSON fixture (not R script literals) to avoid Windows
+cp1252 corruption.
+
+**Gates:** ruff clean · mypy strict clean (59 files) · **126 tests pass** (+38: 33
+functional + 5 parity). Pre-existing `ruff format` nit in `tests/parity/r_harness.py` still
+left untouched (out of scope).
+
 ## Baseline metrics (autocode)
 
 | metric | value |
@@ -114,9 +152,9 @@ untouched (out of scope).
 Per [migration-roadmap.md](docs/migration-roadmap.md). Ingest file_io (1a) is now done.
 Continue the two parallel high-value tracks:
 
-- **Ingest (Stage 1):** next is 1b reading — start with `header_normalization` (HIGH:
-  transliteration + ordered regex chain), then `read_utils` / `sheet_read` / `batching`; and
-  1d `validate` (HIGH, independent against fixtures).
+- **Ingest (Stage 1):** 1a (file_io) and the 1b `header_normalization` leaf are done.
+  Next: `read_utils` (LOW) → `sheet_read` (MEDIUM; consumes header_normalization) and
+  `batching` (MEDIUM); plus 1d `validate` (HIGH, independent against fixtures).
 - **Postpro rule engine (Stage 2 critical path):** bottom-up `matching_strategy` →
   `matching_values` → `target_apply`.
 

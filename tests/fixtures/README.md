@@ -68,6 +68,26 @@ A JSON array of file-path strings fed to `extract_file_metadata` (`10-metadata.R
 | first 4-digit token wins          | `r_fao_1961_a_b_c_2000_wheat.xlsx` → yearbook `fao_1961`, commodity `2000_wheat` |
 | non-ASCII name (`is_ascii=FALSE` + error message) | `r_fao_1949_a_b_c_wheat_café.xlsx` |
 
+### `header_names_inputs.json`
+
+A JSON array of raw header names fed to `normalize_header_names` (`11-header-normalization.R`
+→ `ingest/reading/header_normalization.py`). Exercises the ordered regex chain and — the
+point of the fixture — the `Latin-ASCII; Lower` transliteration on accented/unicode headers,
+the top project parity risk. Because the header non-alnum pattern **keeps** `/` (unlike
+match-key normalization), it also surfaces transliterations masked elsewhere:
+
+| Edge case                | Element(s) |
+|--------------------------|------------|
+| accents / diacritics     | `café au lait`, `São Paulo`, `Côte d'Ivoire`, `Zürich`, `Ñoño`, `naïve`, `Región`, `Población` |
+| ligatures / symbols      | `groß` (ß→ss), `½ unit` (½→`1/2`, `/` kept → `1/2_unit`), `œuvre` (œ→oe), `æsir` (æ→ae), `Øresund`, `Åland` |
+| separator padding        | `Year / Period`, `value - amount`, `p - q / r` |
+| punctuation → underscore | `GDP  (current US$)`, `value %`, `a,b;c`, `test@#123` |
+| underscore collapse/trim | `a__b`, `_leading_`, `__x__` |
+| empty / null / fast-path | `""`, `null`, `continent`, `hemisphere`, `a-b`, `x/y` |
+
+The divergence hunt on these found **zero** `anyascii`-vs-ICU differences, so no override is
+needed (verified in `tests/parity/test_header_normalization_parity.py`).
+
 ## Regenerating goldens
 
 Goldens are derived from these fixtures via the R source of truth:
