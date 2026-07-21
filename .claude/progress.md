@@ -175,6 +175,36 @@ immutability (no per-duplicate deep copy), deterministic error messages.
 overrides for the untyped Excel-IO deps (`fastexcel`, `xlsxwriter`). Pre-existing `ruff
 format` nit in `r_harness.py` resolved incidentally (the file was edited for the extension).
 
+## Phase 1c (partial) — ingest transform: transform_utils + reshape — ✅ complete (2026-07-21)
+
+Ported the wide->long transform core (`r/1-import_pipeline/12-transform/`), bottom-up:
+
+- **`transform_utils.py`** (`12-transform-utils.R`) — `identify_year_columns` (candidates =
+  columns not in `column_order \ {year,value}`, kept when matching `^\d{4}(-\d{4})?$`, in
+  column order), `normalize_key_fields` (add missing base cols null; `commodity` :=
+  normalized scalar; normalize `variable`/`hemisphere`/`continent`/`polity`; clean
+  `footnotes`; `unit` left raw), `convert_year_columns` (Excel `.0` strip, `YYYY-NN`->`YYYY`,
+  `YYYY-NN/YYYY-NN`->`YYYY-YYYY`, then a **fatal** duplicate-collision guard → `ValidationError`).
+- **`reshape.py`** (`12-reshape.R`) — `reshape_to_long` (the `melt`->`unpivot`), `add_metadata`
+  (document/notes/yearbook), `transform_file_dt` (full per-file chain), `resolve_commodity_name`,
+  `build_empty_transform_result`, and the `TransformResult(wide_raw, long_raw)` type.
+
+**Parity risk #2 handled:** the `whep_year_columns` attribute is NOT carried — `reshape_to_long`
+recomputes year columns via `identify_year_columns`. `unpivot(index=available_id, on=year_cols)`
+drops exactly the columns `melt(id.vars, measure.vars)` drops (verified: a non-id/non-year
+column is dropped identically). **Confirmed polars `unpivot` produces the same variable-major
+row order as data.table `melt`** — the full `transform_file_dt` long frame matched the R golden
+byte-for-byte: 12 columns in order, 45 rows (72 melted − 27 null-value), every cell equal
+(incl. accent-folded polity values and the `drop_na_value_rows` filtering).
+
+**Capture:** new `transform` CaptureSpec reads a real corpus sheet then runs the full R
+`transform_file_dt` (reuses the harness `preamble`/`fixtures_dir`), capturing the long frame
+column-by-column. Divergence documented: R's year-column `as.character` coercion is a no-op
+(calamine reads all-as-text).
+
+**Gates:** ruff clean · mypy strict clean (68 files) · **202 tests pass** (+35: 22 functional
++ 13 parity).
+
 ## Baseline metrics (autocode)
 
 | metric | value |
@@ -189,11 +219,11 @@ format` nit in `r_harness.py` resolved incidentally (the file was edited for the
 Per [migration-roadmap.md](docs/migration-roadmap.md). Ingest file_io (1a) is now done.
 Continue the two parallel high-value tracks:
 
-- **Ingest (Stage 1):** 1a (file_io) and 1b (reading: header_normalization + read_utils +
-  sheet_read + batching) are done. Next: 1c transform — `transform_utils` (HIGH),
-  `reshape` (HIGH, the wide→long `unpivot`), `processing` (HIGH, fused read+transform); and
-  1d `validate` (HIGH) → `consolidate`. Then 1e runner (wires read_workbook_batch +
-  the deferred parallel `read_pipeline_files` via `ProcessPoolExecutor`).
+- **Ingest (Stage 1):** 1a (file_io), 1b (reading), and most of 1c transform
+  (`transform_utils` + `reshape`) are done. Next: 1c `processing` (`12-processing.R`, HIGH —
+  the fused read+transform-per-batch path + `ProcessPoolExecutor`, deterministic output
+  independent of worker count); 1d `validate` (HIGH) → `consolidate`; then 1e runner (wires
+  `read_workbook_batch` + `transform_file_dt` + the deferred parallel `read_pipeline_files`).
 - **Postpro rule engine (Stage 2 critical path):** bottom-up `matching_strategy` →
   `matching_values` → `target_apply`.
 

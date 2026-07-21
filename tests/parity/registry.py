@@ -19,8 +19,30 @@ _ASSERTIONS = "r/0-general_pipeline/02-helpers/02-assertions.R"
 _FILE_METADATA = "r/1-import_pipeline/10-file_io/10-metadata.R"
 _HEADER_NORMALIZATION = "r/1-import_pipeline/11-reading/11-header-normalization.R"
 _DATA_TABLE = "r/0-general_pipeline/02-helpers/02-data-table.R"  # ensure_data_table
+_DATA_CLEANING = "r/0-general_pipeline/02-helpers/02-data-cleaning.R"  # drop_na_value_rows
 _READ_UTILS = "r/1-import_pipeline/11-reading/11-read-utils.R"
 _SHEET_READ = "r/1-import_pipeline/11-reading/11-sheet-read.R"
+_TRANSFORM_UTILS = "r/1-import_pipeline/12-transform/12-transform-utils.R"
+_RESHAPE = "r/1-import_pipeline/12-transform/12-reshape.R"
+
+# Read one corpus sheet, then run the full per-file transform (normalize key fields, clean
+# year headers, melt wide->long, add document/notes/yearbook, drop null-value rows). The
+# exports capture the resulting long frame column-by-column. column_order drives year-column
+# identification; defaults$notes_value feeds the notes column (value_column + the drop toggle
+# come from the sourced constants, not this config).
+_TRANSFORM_PREAMBLE = (
+    "config <- list("
+    "column_required = c('continent','polity','unit','footnotes'), "
+    "column_id = c('commodity','variable','unit','hemisphere','continent','polity','footnotes'), "
+    "column_order = c('hemisphere','continent','polity','commodity','variable','unit','year',"
+    "'value','notes','footnotes','yearbook','document'), "
+    "defaults = list(notes_value = NA_character_))\n"
+    "wb <- file.path(fixtures_dir, "
+    "'corpus/fao_1949/fao_1949_crops/r_fao_1949_crops_92_92_date.xlsx')\n"
+    "wide <- read_excel_sheet(wb, 'production', config)$data\n"
+    "long <- transform_file_dt(wide, 'r_fao_1949_crops_92_92_date.xlsx', "
+    "'fao_1949', 'date', config)$long_raw"
+)
 
 # Build a minimal config (column_required + column_id, frozen constants) and read one corpus
 # sheet once via readxl; the exports then capture each column of the FILTERED result. The
@@ -147,6 +169,43 @@ CAPTURES: dict[str, CaptureSpec] = {
             "read_excel_sheet over a real corpus workbook (readxl text read): header rename "
             "(country->polity), base-column non-empty row filter, and variable:=sheet name. "
             "Confirms readxl-vs-calamine text extraction matches after filtering."
+        ),
+    ),
+    "transform": CaptureSpec(
+        module="transform",
+        r_sources=(
+            _GENERAL_CONSTANTS,
+            _ASSERTIONS,
+            _DATA_TABLE,
+            _STRING_NORMALIZATION,
+            _DATA_CLEANING,
+            _HEADER_NORMALIZATION,
+            _READ_UTILS,
+            _SHEET_READ,
+            _TRANSFORM_UTILS,
+            _RESHAPE,
+        ),
+        preamble=_TRANSFORM_PREAMBLE,
+        exports={
+            "long_columns": "colnames(long)",
+            "long_nrow": "as.character(nrow(long))",
+            "commodity": "long[['commodity']]",
+            "variable": "long[['variable']]",
+            "unit": "long[['unit']]",
+            "hemisphere": "long[['hemisphere']]",
+            "continent": "long[['continent']]",
+            "polity": "long[['polity']]",
+            "footnotes": "long[['footnotes']]",
+            "year": "long[['year']]",
+            "value": "long[['value']]",
+            "document": "long[['document']]",
+            "notes": "long[['notes']]",
+            "yearbook": "long[['yearbook']]",
+        },
+        description=(
+            "Full per-file transform (transform_file_dt) over a real corpus sheet: key-field "
+            "normalization, year-header cleanup, wide->long melt (melt -> unpivot, dropping the "
+            "same columns), metadata enrichment, and null-value drop. Parity on the long shape."
         ),
     ),
 }
