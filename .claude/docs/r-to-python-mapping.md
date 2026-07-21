@@ -58,7 +58,11 @@ naive port.
    normalization (match keys) AND header normalization. Ported with `anyascii` +
    `str.lower()` in `helpers.strings`. **`anyascii` ≈ ICU but not identical** for ligatures
    and symbols (`œ`, `ß`, `½`). Match correctness depends on byte-identical keys →
-   **golden-parity test on the real dataset before any stage relies on it.**
+   **golden-parity test on the real dataset before any stage relies on it.** An **override
+   table now lives in `strings.transliterate_ascii_lower`** (`_ICU_IDENTITY_CODEPOINTS` +
+   `_ICU_REMAP`): ICU is conservative (leaves most symbols → stripped downstream) while anyascii
+   is aggressive (`£`→`GBP`, `°`→`deg`, superscript `¹`→`1`, `½`→`1/2` vs ICU `" 1/2"`). Confirmed
+   on the corpus (`belgian congo¹`); extend the table if a golden run surfaces a new codepoint.
 2. **`melt` vs `unpivot` column-drop semantics** + the R attribute-carried `whep_year_columns`.
    Recompute year columns explicitly; verify `unpivot` drops exactly the non-id/non-measure
    columns `melt` did.
