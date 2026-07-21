@@ -27,6 +27,16 @@ _RESHAPE = "r/1-import_pipeline/12-transform/12-reshape.R"
 _DISCOVERY = "r/1-import_pipeline/10-file_io/10-discovery.R"
 _BATCHING = "r/1-import_pipeline/11-reading/11-batching.R"
 _PROCESSING = "r/1-import_pipeline/12-transform/12-processing.R"
+_VALIDATE = "r/1-import_pipeline/13-output/13-validate.R"
+
+# Validate a multi-document long frame. Pin Sys.Date so the plausible-year range in the error
+# text is deterministic (current_year 2025 -> max_year 2026); the Python parity test passes the
+# same current_year. `values` is the array-of-objects fixture read by fromJSON as a data.frame.
+_VALIDATE_PREAMBLE = (
+    "Sys.Date <- function() as.Date('2025-06-15')\n"
+    "config <- list(column_required = c('continent','polity','unit','footnotes'))\n"
+    "res <- validate_long_dt_by_document(values, config)"
+)
 
 # Discover the whole corpus, then run the fused read+transform pipeline over all workbooks and
 # capture the combined long frame. R's future plan is sequential here (none set), so this is
@@ -264,6 +274,23 @@ CAPTURES: dict[str, CaptureSpec] = {
             "Fused read+transform (read_transform_pipeline_files) over the whole corpus: the "
             "combined long frame from discovering, batch-reading, and transforming every "
             "workbook. Python sequential AND parallel output must match this byte-for-byte."
+        ),
+    ),
+    "validate": CaptureSpec(
+        module="validate",
+        r_sources=(_GENERAL_CONSTANTS, _ASSERTIONS, _DATA_TABLE, _VALIDATE),
+        fixture="synthetic/validate_long_inputs.json",
+        preamble=_VALIDATE_PREAMBLE,
+        exports={
+            "errors": "res$errors",
+            "data_document": "res$data$document",
+            "data_value": "res$data$value",
+        },
+        description=(
+            "validate_long_dt_by_document over an interleaved multi-document long frame: verbatim "
+            "error strings in the exact 4-key sort order (mandatory / year / duplicate), plus the "
+            "document-major reordered data. Covers null + empty missing values, plain/range/"
+            "inverted year errors, and a duplicate with a null key value."
         ),
     ),
 }

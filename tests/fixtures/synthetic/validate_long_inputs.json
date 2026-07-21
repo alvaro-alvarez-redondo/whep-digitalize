@@ -1,0 +1,8 @@
+[
+  {"hemisphere": "north", "continent": "asia", "polity": "japan", "commodity": "rice", "variable": "production", "unit": "t", "year": "1950", "value": "5", "notes": null, "footnotes": "f1", "yearbook": "fao_1950", "document": "docB"},
+  {"hemisphere": "north", "continent": "europe", "polity": "spain", "commodity": "wheat", "variable": "production", "unit": "t", "year": "3000", "value": "10", "notes": "n1", "footnotes": "f2", "yearbook": "fao_1950", "document": "docA"},
+  {"hemisphere": "north", "continent": "asia", "polity": "", "commodity": "rice", "variable": "production", "unit": "t", "year": "1899", "value": "6", "notes": "n2", "footnotes": "f1", "yearbook": "fao_1950", "document": "docB"},
+  {"hemisphere": "north", "continent": "europe", "polity": "spain", "commodity": "wheat", "variable": "production", "unit": "t", "year": "1850-1800", "value": "11", "notes": "n3", "footnotes": null, "yearbook": "fao_1950", "document": "docA"},
+  {"hemisphere": "north", "continent": "asia", "polity": "japan", "commodity": "rice", "variable": "production", "unit": "t", "year": "1950", "value": "5", "notes": null, "footnotes": "f1", "yearbook": "fao_1950", "document": "docB"},
+  {"hemisphere": "north", "continent": "europe", "polity": "spain", "commodity": "wheat", "variable": "production", "unit": "t", "year": "1960", "value": "20", "notes": "n5", "footnotes": "f2", "yearbook": "fao_1950", "document": "docA"}
+]

@@ -242,6 +242,34 @@ the fused path is what the runner uses) — will be added with the runner if nee
 **Gates:** ruff clean · mypy strict clean (71 files) · **232 tests pass** (+30). Stage 1c
 (transform) is complete.
 
+## Phase 1d (partial) — ingest output: validate — ✅ complete (2026-07-21)
+
+Ported `13-validate.R` → `ingest/output/validate.py` (`validate_long_dt_by_document` +
+`ValidationResult`), the most intricate ingest module (parity risk #3). Runs the three
+long-format checks for every document in one pass:
+
+- **Document-major frame:** reorder rows so each document is contiguous in first-appearance
+  order (via `_orig` min per document + stable sort), preserving within-document order (R
+  `order(chmatch(...))`); per-document row id via `pl.int_range().over("document")`, absolute
+  row position, document rank via `rle_id`.
+- **4-key stable sort:** every error carries `(document_rank, type_rank, key_a, key_b)`; the
+  combined errors sort by that tuple (R `setorder`) so within a document mandatory → year →
+  duplicate errors interleave in the exact R order. `None`→`"NA"` coercion in messages mirrors
+  R `as.character`.
+- **current_year** is a parameter (defaults to system year, matching R `Sys.Date`) so the
+  plausible-year range in messages is deterministic in tests.
+
+**Parity:** new `validate` CaptureSpec over an interleaved multi-document fixture; the R
+capture pins `Sys.Date` (→ `current_year` 2025), the Python parity test passes the same.
+**Verbatim error strings AND their order match R byte-for-byte** (7 errors spanning
+mandatory/year/duplicate across two interleaved documents, incl. `notes = NA` and `[1900,
+2026]`), as does the document-major reordered data.
+
+**Deferred:** the non-vectorized `validate_long_dt` + standalone helpers (the reference the
+vectorized path replaces; the runner uses `_by_document`).
+
+**Gates:** ruff clean · mypy strict clean (74 files) · **248 tests pass** (+16).
+
 ## Baseline metrics (autocode)
 
 | metric | value |
@@ -256,12 +284,12 @@ the fused path is what the runner uses) — will be added with the runner if nee
 Per [migration-roadmap.md](docs/migration-roadmap.md). Ingest file_io (1a) is now done.
 Continue the two parallel high-value tracks:
 
-- **Ingest (Stage 1):** 1a (file_io), 1b (reading), and 1c (transform: transform_utils +
-  reshape + processing) are done. Next: 1d `output.validate` (`13-validate.R`, HIGH —
-  `validate_long_dt_by_document`, per-document ordering + verbatim error strings) →
-  `output.consolidate` (`13-output.R`); then 1e `ingest.runner` wiring
-  `discover_pipeline_files` → `read_transform_pipeline_files` → validate → consolidate into
-  the `ImportResult` contract.
+- **Ingest (Stage 1):** 1a (file_io), 1b (reading), 1c (transform), and the 1d
+  `output.validate` are done. Next: `output.consolidate` (`13-output.R`, LOW-MED —
+  `consolidate_audited_dt` via `pl.concat(how="diagonal")` + canonical column reordering,
+  `validate_output_column_order`); then 1e `ingest.runner` wiring `discover_pipeline_files` →
+  `read_transform_pipeline_files` → `validate_long_dt_by_document` → consolidate into the
+  `ImportResult` contract.
 - **Postpro rule engine (Stage 2 critical path):** bottom-up `matching_strategy` →
   `matching_values` → `target_apply`.
 
