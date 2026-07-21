@@ -45,17 +45,24 @@ class CaptureSpec:
     Attributes:
         module: Golden sub-directory name under ``tests/golden/`` (e.g. ``string_normalization``).
         r_sources: R files to ``source()``, in order, as paths relative to the R repo root.
-        fixture: Input fixture path relative to ``tests/fixtures/`` (a JSON document read by
-            ``jsonlite::fromJSON`` and bound to the R variable ``values``).
-        exports: Mapping of golden name → R expression evaluated with ``values`` in scope. Each
-            expression must yield an atomic vector; it is written to ``<module>/<name>.json``.
+        exports: Mapping of golden name → R expression. Each expression must yield an atomic
+            vector; it is written to ``<module>/<name>.json``. Expressions see ``values`` (when
+            ``fixture`` is set), ``fixtures_dir`` (the committed ``tests/fixtures`` dir, for
+            workbook-reading captures), and any names bound by ``preamble``.
+        fixture: Optional input fixture path relative to ``tests/fixtures/`` (a JSON document
+            read by ``jsonlite::fromJSON`` and bound to the R variable ``values``). ``None`` for
+            captures that read a workbook via ``fixtures_dir`` instead of a JSON vector.
+        preamble: Optional R code run after sourcing and before the exports — used to build a
+            ``config`` list or compute a shared intermediate (e.g. read a sheet once, then
+            capture its columns).
         description: Human-readable summary of what the capture covers.
     """
 
     module: str
     r_sources: tuple[str, ...]
-    fixture: str
     exports: dict[str, str]
+    fixture: str | None = None
+    preamble: str = ""
     description: str = field(default="")
 
     def golden_dir(self, golden_root: Path = GOLDEN_ROOT) -> Path:
@@ -89,16 +96,23 @@ def _resolve_r_repo(r_repo: Path | None) -> Path:
 
 
 def _render_bootstrap(
-    spec: CaptureSpec, r_repo: Path, fixture_abs: Path, golden_dir: Path
+    spec: CaptureSpec, r_repo: Path, fixture_abs: Path | None, golden_dir: Path
 ) -> str:
     """Render the ephemeral R bootstrap script for a capture.
 
     Uses forward-slash paths throughout (accepted by R on Windows) and sources every R file
-    with ``encoding = "UTF-8"`` so future non-ASCII R sources load correctly.
+    with ``encoding = "UTF-8"`` so future non-ASCII R sources load correctly. Binds ``values``
+    only when a JSON fixture is given; always binds ``fixtures_dir`` (for workbook-reading
+    captures) and runs ``spec.preamble`` before the exports.
     """
     repo_posix = r_repo.as_posix()
     source_lines = "\n".join(
         f'source(file.path(r_repo, "{src}"), encoding = "UTF-8")' for src in spec.r_sources
+    )
+    values_line = (
+        f'values <- jsonlite::fromJSON("{fixture_abs.as_posix()}")\n'
+        if fixture_abs is not None
+        else ""
     )
     export_lines = "\n".join(
         f'write_golden(({expr}), "{(golden_dir / f"{name}.json").as_posix()}")'
@@ -110,6 +124,7 @@ options(stringsAsFactors = FALSE, scipen = 999, warn = 1)
 Sys.setlocale("LC_COLLATE", "C")
 
 r_repo <- "{repo_posix}"
+fixtures_dir <- "{FIXTURES_DIR.as_posix()}"
 {source_lines}
 
 # Atomic vector -> JSON array; NA -> null (preserves NA-vs-"" for match-key parity).
@@ -123,8 +138,9 @@ write_golden <- function(x, path) {{
   )
 }}
 
-values <- jsonlite::fromJSON("{fixture_abs.as_posix()}")
-dir.create("{golden_dir.as_posix()}", recursive = TRUE, showWarnings = FALSE)
+{values_line}dir.create("{golden_dir.as_posix()}", recursive = TRUE, showWarnings = FALSE)
+
+{spec.preamble}
 
 {export_lines}
 
@@ -154,13 +170,13 @@ def run_capture(
         The ``export -> golden path`` mapping that was produced.
 
     Raises:
-        FileNotFoundError: If Rscript, the R repo, or the fixture is missing.
+        FileNotFoundError: If Rscript, the R repo, or a declared fixture is missing.
         RuntimeError: If the Rscript run fails or an expected golden is not produced.
     """
     resolved_rscript = _resolve_rscript(rscript)
     resolved_repo = _resolve_r_repo(r_repo)
-    fixture_abs = FIXTURES_DIR / spec.fixture
-    if not fixture_abs.is_file():
+    fixture_abs = FIXTURES_DIR / spec.fixture if spec.fixture is not None else None
+    if fixture_abs is not None and not fixture_abs.is_file():
         raise FileNotFoundError(f"Fixture not found: {fixture_abs}")
 
     golden_dir = spec.golden_dir(golden_root)

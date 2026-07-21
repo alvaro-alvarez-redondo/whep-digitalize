@@ -27,6 +27,9 @@ from whep_digitize.ingest.reading.header_normalization import (
 )
 
 _SPEC = CAPTURES["header_normalization"]
+_FIXTURE_NAME = _SPEC.fixture
+assert _FIXTURE_NAME is not None  # this spec always declares a JSON fixture
+_FIXTURE_PATH = FIXTURES_DIR / _FIXTURE_NAME
 
 # Canonical set exactly as 11-sheet-read.R builds it (mirrors registry._CANON).
 _CANON = ["continent", "polity", "unit", "footnotes", "commodity", "variable", "hemisphere"]
@@ -45,7 +48,7 @@ def _golden(export: str) -> list[str | None]:
 
 @pytest.mark.parity
 def test_normalize_matches_golden() -> None:
-    inputs = json.loads((FIXTURES_DIR / _SPEC.fixture).read_text(encoding="utf-8"))
+    inputs = json.loads(_FIXTURE_PATH.read_text(encoding="utf-8"))
     assert normalize_header_names(inputs) == _golden("normalize")
 
 

@@ -18,6 +18,21 @@ _STRING_NORMALIZATION = "r/0-general_pipeline/02-helpers/02-string-normalization
 _ASSERTIONS = "r/0-general_pipeline/02-helpers/02-assertions.R"
 _FILE_METADATA = "r/1-import_pipeline/10-file_io/10-metadata.R"
 _HEADER_NORMALIZATION = "r/1-import_pipeline/11-reading/11-header-normalization.R"
+_DATA_TABLE = "r/0-general_pipeline/02-helpers/02-data-table.R"  # ensure_data_table
+_READ_UTILS = "r/1-import_pipeline/11-reading/11-read-utils.R"
+_SHEET_READ = "r/1-import_pipeline/11-reading/11-sheet-read.R"
+
+# Build a minimal config (column_required + column_id, frozen constants) and read one corpus
+# sheet once via readxl; the exports then capture each column of the FILTERED result. The
+# corpus workbook is located under the committed fixtures dir so R and Python read the same
+# bytes. Single quotes keep it embeddable in the double-quoted bootstrap heredoc.
+_SHEET_READ_PREAMBLE = (
+    "config <- list("
+    "column_required = c('continent','polity','unit','footnotes'), "
+    "column_id = c('commodity','variable','unit','hemisphere','continent','polity','footnotes'))\n"
+    "sheet_res <- read_excel_sheet(file.path(fixtures_dir, "
+    "'corpus/fao_1949/fao_1949_crops/r_fao_1949_crops_92_92_date.xlsx'), 'production', config)$data"
+)
 
 # Canonical set exactly as 11-sheet-read.R builds it: unique(column_required + column_id).
 _CANON = "c('continent','polity','unit','footnotes','commodity','variable','hemisphere')"
@@ -101,6 +116,37 @@ CAPTURES: dict[str, CaptureSpec] = {
             "Header normalization: the ordered regex chain + Latin-ASCII;Lower transliteration "
             "(top parity risk: anyascii vs ICU on accented/unicode headers), canonical + "
             "country->polity alias renames with all collision guards, and collision detection."
+        ),
+    ),
+    "sheet_read": CaptureSpec(
+        module="sheet_read",
+        r_sources=(
+            _GENERAL_CONSTANTS,
+            _ASSERTIONS,
+            _DATA_TABLE,
+            _HEADER_NORMALIZATION,
+            _READ_UTILS,
+            _SHEET_READ,
+        ),
+        preamble=_SHEET_READ_PREAMBLE,
+        exports={
+            "columns": "colnames(sheet_res)",
+            "nrow": "as.character(nrow(sheet_res))",
+            "hemisphere": "sheet_res[['hemisphere']]",
+            "continent": "sheet_res[['continent']]",
+            "polity": "sheet_res[['polity']]",
+            "unit": "sheet_res[['unit']]",
+            "footnotes": "sheet_res[['footnotes']]",
+            "variable": "sheet_res[['variable']]",
+            "y1934_1938": "sheet_res[['1934-1938']]",
+            "y1946": "sheet_res[['1946']]",
+            "y1947": "sheet_res[['1947']]",
+            "y1948": "sheet_res[['1948']]",
+        },
+        description=(
+            "read_excel_sheet over a real corpus workbook (readxl text read): header rename "
+            "(country->polity), base-column non-empty row filter, and variable:=sheet name. "
+            "Confirms readxl-vs-calamine text extraction matches after filtering."
         ),
     ),
 }

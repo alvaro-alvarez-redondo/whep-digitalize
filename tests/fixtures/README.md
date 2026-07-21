@@ -12,7 +12,9 @@ A small representative subset of the R project's raw import workbooks, copied ve
     <whep-digitalization>/data/1-import/10-raw_import/
 
 The directory layout mirrors the source (`<yearbook>/<yearbook>_<category>/<file>.xlsx`), so
-`corpus/` is a drop-in raw-import root for future ingest-stage (Stage 1) parity captures. One
+`corpus/` is a drop-in raw-import root for ingest-stage (Stage 1) parity captures — the
+`sheet_read` capture reads `fao_1949/fao_1949_crops/r_fao_1949_crops_92_92_date.xlsx` directly
+(via the harness `fixtures_dir` + `preamble`), so R and Python read identical bytes. One
 smallest-available workbook per data category was chosen to span the ingest surface while
 keeping the committed binary footprint tiny (~37 KB total):
 

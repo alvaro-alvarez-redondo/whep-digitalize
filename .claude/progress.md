@@ -138,6 +138,43 @@ cp1252 corruption.
 functional + 5 parity). Pre-existing `ruff format` nit in `tests/parity/r_harness.py` still
 left untouched (out of scope).
 
+## Phase 1b (rest) — ingest reading: read_utils + sheet_read + batching — ✅ complete (2026-07-21)
+
+Completed the reading sub-stage (`r/1-import_pipeline/11-reading/`), bottom-up:
+
+- **`read_utils.py`** (`11-read-utils.R`) — typed `(data, errors)` plumbing: `ReadResult`,
+  `SafeReadResult[T]`, `safe_execute_read` (try/except → collected error, R `tryCatch`),
+  `create_empty_read_result`, `has_read_errors`, `normalize_pipeline_read_result`. Error
+  strings are deterministic (R `cli::format_error` box art not reproduced).
+- **`sheet_read.py`** (`11-sheet-read.R`) — `read_excel_sheet`: all-as-text read
+  (`pl.read_excel(engine="calamine", infer_schema_length=0)`), header normalize +
+  canonical/alias rename, base-column non-empty filter, `variable` := sheet name (overwrite
+  in place if present, else append — R `:=`). `read_file_sheets` row-binds sheets via
+  `pl.concat(how="diagonal")` (R `rbindlist(use.names, fill)`) + non-ASCII sheet-name warning;
+  `compute_non_empty_base_rows` via `any_horizontal`.
+- **`batching.py`** (`11-batching.R`) — `split_workbook_batches`,
+  `resolve_import_workbook_batch_size`, `resolve_import_effective_workers`
+  (`"auto"` → `min(8, cpu-1)`, explicit int honored, `<1` → sequential), `read_workbook_batch`
+  (dedup unique paths, map back preserving order). Deferred to the runner phase: the parallel
+  `read_pipeline_files` + `import_future_scheduling` (no direct `ProcessPoolExecutor` analogue).
+
+**Key parity finding:** readxl and calamine disagree on the RAW read (readxl keeps blank
+source rows, calamine drops them — 23 vs 18 rows on the date workbook), but
+`read_excel_sheet`'s base-column filter removes exactly those rows, so the **filtered output
+is byte-identical**. Verified: all 10 output columns + column order (`country`→`polity`,
+`variable` last) + row count match the R golden.
+
+**Harness extension (reusable):** `CaptureSpec.fixture` is now optional and a `preamble` +
+`fixtures_dir` R var were added, so a capture can read a committed corpus workbook and capture
+its columns (the pattern all frame-producing ingest modules will reuse). New `sheet_read`
+CaptureSpec reads a real corpus sheet via readxl and captures the filtered frame. Confirmed
+`readxl`/`cli`/`future.apply` available in the R 4.6.0 env. Divergences documented: polars
+immutability (no per-duplicate deep copy), deterministic error messages.
+
+**Gates:** ruff clean · mypy strict clean (64 files) · **167 tests pass** (+41). Added mypy
+overrides for the untyped Excel-IO deps (`fastexcel`, `xlsxwriter`). Pre-existing `ruff
+format` nit in `r_harness.py` resolved incidentally (the file was edited for the extension).
+
 ## Baseline metrics (autocode)
 
 | metric | value |
@@ -152,9 +189,11 @@ left untouched (out of scope).
 Per [migration-roadmap.md](docs/migration-roadmap.md). Ingest file_io (1a) is now done.
 Continue the two parallel high-value tracks:
 
-- **Ingest (Stage 1):** 1a (file_io) and the 1b `header_normalization` leaf are done.
-  Next: `read_utils` (LOW) → `sheet_read` (MEDIUM; consumes header_normalization) and
-  `batching` (MEDIUM); plus 1d `validate` (HIGH, independent against fixtures).
+- **Ingest (Stage 1):** 1a (file_io) and 1b (reading: header_normalization + read_utils +
+  sheet_read + batching) are done. Next: 1c transform — `transform_utils` (HIGH),
+  `reshape` (HIGH, the wide→long `unpivot`), `processing` (HIGH, fused read+transform); and
+  1d `validate` (HIGH) → `consolidate`. Then 1e runner (wires read_workbook_batch +
+  the deferred parallel `read_pipeline_files` via `ProcessPoolExecutor`).
 - **Postpro rule engine (Stage 2 critical path):** bottom-up `matching_strategy` →
   `matching_values` → `target_apply`.
 

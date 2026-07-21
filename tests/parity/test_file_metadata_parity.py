@@ -25,6 +25,9 @@ from registry import CAPTURES
 from whep_digitize.ingest.file_io.metadata import extract_file_metadata
 
 _SPEC = CAPTURES["file_metadata"]
+_FIXTURE_NAME = _SPEC.fixture
+assert _FIXTURE_NAME is not None  # this spec always declares a JSON fixture
+_FIXTURE_PATH = FIXTURES_DIR / _FIXTURE_NAME
 
 
 def _load_json(path: Path) -> list[str | None]:
@@ -47,7 +50,7 @@ def _as_r_character(frame: pl.DataFrame, column: str) -> pl.Series:
 @pytest.fixture(scope="module")
 def result() -> pl.DataFrame:
     """The Python metadata frame over the frozen file-name fixture."""
-    inputs = _load_json(FIXTURES_DIR / _SPEC.fixture)
+    inputs = _load_json(_FIXTURE_PATH)
     return extract_file_metadata([path for path in inputs if path is not None])
 
 

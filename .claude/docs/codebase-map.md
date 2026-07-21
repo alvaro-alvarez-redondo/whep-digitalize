@@ -62,10 +62,10 @@ Public: `runner.run_import_pipeline(config, options=None) -> ImportResult`. Port
 |----------------|-------------------|----------|------|
 | `file_io/discovery.py` **[done]** | `discover_files`, `discover_pipeline_files` | `10-discovery.R` | LOW |
 | `file_io/metadata.py` **[done]** | `extract_file_metadata`, `build_empty_file_metadata` | `10-metadata.R` | MEDIUM |
-| `reading/read_utils.py` | read-result `(data, errors)` type + guards | `11-read-utils.R` | LOW |
-| `reading/sheet_read.py` | `read_excel_sheet`, `read_file_sheets`, `compute_non_empty_base_rows` | `11-sheet-read.R` | MEDIUM |
+| `reading/read_utils.py` **[done]** | `ReadResult`, `SafeReadResult`, `safe_execute_read`, `create_empty_read_result`, `has_read_errors`, `normalize_pipeline_read_result`, `build_read_error` | `11-read-utils.R` | LOW |
+| `reading/sheet_read.py` **[done]** | `read_excel_sheet`, `read_file_sheets`, `compute_non_empty_base_rows` | `11-sheet-read.R` | MEDIUM |
 | `reading/header_normalization.py` **[done]** | `normalize_header_name`, `normalize_header_names`, `validate_header_normalization`, `resolve_canonical_header_renames`, `HeaderRenames` | `11-header-normalization.R` | **HIGH** |
-| `reading/batching.py` | `split_workbook_batches`, worker resolvers, `read_workbook_batch` | `11-batching.R` | MEDIUM |
+| `reading/batching.py` **[done]** | `split_workbook_batches`, `resolve_import_workbook_batch_size`, `resolve_import_effective_workers`, `read_workbook_batch`, `BatchReadResult` (parallel `read_pipeline_files` deferred to runner) | `11-batching.R` | MEDIUM |
 | `transform/transform_utils.py` | `identify_year_columns`, `normalize_key_fields`, `convert_year_columns` | `12-transform-utils.R` | **HIGH** |
 | `transform/reshape.py` | `reshape_to_long` (unpivot), `add_metadata`, `transform_file_dt`, `resolve_commodity_name` | `12-reshape.R` | **HIGH** |
 | `transform/processing.py` | `read_transform_pipeline_files` (fused, parallel), `transform_single_file` | `12-processing.R` | **HIGH** |
