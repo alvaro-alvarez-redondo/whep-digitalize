@@ -205,6 +205,43 @@ column-by-column. Divergence documented: R's year-column `as.character` coercion
 **Gates:** ruff clean · mypy strict clean (68 files) · **202 tests pass** (+35: 22 functional
 + 13 parity).
 
+## Phase 1c (rest) — ingest transform: processing (fused + parallel) — ✅ complete (2026-07-21)
+
+Ported `12-processing.R` → `ingest/transform/processing.py`, completing Stage 1c:
+
+- **`transform_single_file`** — resolve commodity + `transform_file_dt` for one file; `None` for
+  a 0-row wide frame (R `NULL`, dropped downstream); explicit `isinstance` guards on
+  `file_name` / `yearbook` (ValidationError, and mypy-narrowing).
+- **`read_transform_pipeline_files`** — the fused read+transform-per-batch path
+  (+ `ReadTransformResult`). Sequential by default; `ProcessPoolExecutor` when
+  `resolve_import_effective_workers > 1` and `> 1` batch, with a graceful sequential fallback on
+  `BrokenProcessPool` / `OSError`. **Determinism:** `executor.map` preserves submission order,
+  so combined output is byte-identical regardless of worker count.
+- **Config-not-picklable workaround:** `Config` nests `mappingproxy` (unpicklable), so workers
+  receive the picklable `(dataset_name, project_root)` and rebuild an identical config via
+  `load_pipeline_config` (config is a pure function of those + the frozen constants).
+
+**Parity (the headline result):** new `processing` CaptureSpec discovers the whole corpus and
+runs the full R `read_transform_pipeline_files`. Python **sequential AND parallel** (4 workers,
+one batch per file) both match the R golden byte-for-byte (313 rows × 12 cols) — verified in
+`tests/parity/test_processing_parity.py`. ProcessPoolExecutor spawn works under pytest.
+
+**Transliteration divergence found + fixed (top project risk realized).** The corpus surfaced
+one cell where `anyascii` ≠ ICU: `"belgian congo¹"` — ICU leaves superscript `¹` (U+00B9)
+unchanged (→ stripped by the non-alnum step) while `anyascii` folds it to `"1"` (kept), giving
+`belgian congo1`. Root cause: **ICU "Latin-ASCII" is conservative** (leaves most symbols) while
+anyascii is aggressive (`£`→`GBP`, `°`→`deg`, `½`→`1/2` vs ICU `" 1/2"`, …). Fix: an ICU-derived
+override table in the shared `strings.transliterate_ascii_lower` (identity codepoints +
+fraction/`±`/`Ŋ` remaps over Latin-1 + super/subscripts + number forms). Regression tests in
+`tests/general/test_helpers.py`; the golden parity tests guard the rest. All prior parity
+goldens (string/header/transform) still pass unchanged.
+
+**Deferred:** the non-fused two-stage `process_files` / `transform_files_list` (R has both;
+the fused path is what the runner uses) — will be added with the runner if needed.
+
+**Gates:** ruff clean · mypy strict clean (71 files) · **232 tests pass** (+30). Stage 1c
+(transform) is complete.
+
 ## Baseline metrics (autocode)
 
 | metric | value |
@@ -219,11 +256,12 @@ column-by-column. Divergence documented: R's year-column `as.character` coercion
 Per [migration-roadmap.md](docs/migration-roadmap.md). Ingest file_io (1a) is now done.
 Continue the two parallel high-value tracks:
 
-- **Ingest (Stage 1):** 1a (file_io), 1b (reading), and most of 1c transform
-  (`transform_utils` + `reshape`) are done. Next: 1c `processing` (`12-processing.R`, HIGH —
-  the fused read+transform-per-batch path + `ProcessPoolExecutor`, deterministic output
-  independent of worker count); 1d `validate` (HIGH) → `consolidate`; then 1e runner (wires
-  `read_workbook_batch` + `transform_file_dt` + the deferred parallel `read_pipeline_files`).
+- **Ingest (Stage 1):** 1a (file_io), 1b (reading), and 1c (transform: transform_utils +
+  reshape + processing) are done. Next: 1d `output.validate` (`13-validate.R`, HIGH —
+  `validate_long_dt_by_document`, per-document ordering + verbatim error strings) →
+  `output.consolidate` (`13-output.R`); then 1e `ingest.runner` wiring
+  `discover_pipeline_files` → `read_transform_pipeline_files` → validate → consolidate into
+  the `ImportResult` contract.
 - **Postpro rule engine (Stage 2 critical path):** bottom-up `matching_strategy` →
   `matching_values` → `target_apply`.
 

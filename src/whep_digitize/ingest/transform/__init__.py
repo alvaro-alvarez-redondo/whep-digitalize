@@ -6,12 +6,10 @@ r"""Ingest / transform — ports ``r/1-import_pipeline/12-transform/`` (algorith
 * :mod:`~whep_digitize.ingest.transform.reshape` (``12-reshape.R``) — the wide->long melt
   (``data.table::melt`` -> ``pl.DataFrame.unpivot``, recomputing year columns explicitly),
   ``document`` / ``notes`` / ``yearbook`` enrichment, and the per-file ``transform_file_dt``.
-
-To migrate (risk):
-
-* ``processing.py`` <- ``12-processing.R`` — the fused read+transform-per-batch path
-  and its parallelism (``ProcessPoolExecutor``), preserving deterministic output order
-  independent of worker count. (HIGH)
+* :mod:`~whep_digitize.ingest.transform.processing` (``12-processing.R``) — the fused
+  read+transform-per-batch path (``read_transform_pipeline_files``, ``transform_single_file``)
+  and its ``ProcessPoolExecutor`` parallelism, with deterministic output order independent of
+  worker count and a graceful sequential fallback.
 """
 
 from __future__ import annotations

@@ -68,7 +68,7 @@ Public: `runner.run_import_pipeline(config, options=None) -> ImportResult`. Port
 | `reading/batching.py` **[done]** | `split_workbook_batches`, `resolve_import_workbook_batch_size`, `resolve_import_effective_workers`, `read_workbook_batch`, `BatchReadResult` (parallel `read_pipeline_files` deferred to runner) | `11-batching.R` | MEDIUM |
 | `transform/transform_utils.py` **[done]** | `identify_year_columns`, `normalize_key_fields`, `convert_year_columns` | `12-transform-utils.R` | **HIGH** |
 | `transform/reshape.py` **[done]** | `reshape_to_long` (unpivot), `add_metadata`, `transform_file_dt`, `resolve_commodity_name`, `build_empty_transform_result`, `TransformResult` | `12-reshape.R` | **HIGH** |
-| `transform/processing.py` | `read_transform_pipeline_files` (fused, parallel), `transform_single_file` | `12-processing.R` | **HIGH** |
+| `transform/processing.py` **[done]** | `read_transform_pipeline_files` (fused, `ProcessPoolExecutor`, deterministic + sequential fallback), `transform_single_file`, `ReadTransformResult` | `12-processing.R` | **HIGH** |
 | `output/validate.py` | `validate_long_dt_by_document` (+ per-check helpers) | `13-validate.R` | **HIGH** |
 | `output/consolidate.py` | `consolidate_audited_dt`, `validate_output_column_order` | `13-output.R` | LOW-MED |
 

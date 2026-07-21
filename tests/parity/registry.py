@@ -24,6 +24,23 @@ _READ_UTILS = "r/1-import_pipeline/11-reading/11-read-utils.R"
 _SHEET_READ = "r/1-import_pipeline/11-reading/11-sheet-read.R"
 _TRANSFORM_UTILS = "r/1-import_pipeline/12-transform/12-transform-utils.R"
 _RESHAPE = "r/1-import_pipeline/12-transform/12-reshape.R"
+_DISCOVERY = "r/1-import_pipeline/10-file_io/10-discovery.R"
+_BATCHING = "r/1-import_pipeline/11-reading/11-batching.R"
+_PROCESSING = "r/1-import_pipeline/12-transform/12-processing.R"
+
+# Discover the whole corpus, then run the fused read+transform pipeline over all workbooks and
+# capture the combined long frame. R's future plan is sequential here (none set), so this is
+# the sequential golden that both Python sequential and parallel output must match.
+_PROCESSING_PREAMBLE = (
+    "config <- list("
+    "column_required = c('continent','polity','unit','footnotes'), "
+    "column_id = c('commodity','variable','unit','hemisphere','continent','polity','footnotes'), "
+    "column_order = c('hemisphere','continent','polity','commodity','variable','unit','year',"
+    "'value','notes','footnotes','yearbook','document'), "
+    "defaults = list(notes_value = NA_character_))\n"
+    "file_list <- discover_files(file.path(fixtures_dir, 'corpus'))\n"
+    "long <- read_transform_pipeline_files(file_list, config)$transformed$long_raw"
+)
 
 # Read one corpus sheet, then run the full per-file transform (normalize key fields, clean
 # year headers, melt wide->long, add document/notes/yearbook, drop null-value rows). The
@@ -206,6 +223,47 @@ CAPTURES: dict[str, CaptureSpec] = {
             "Full per-file transform (transform_file_dt) over a real corpus sheet: key-field "
             "normalization, year-header cleanup, wide->long melt (melt -> unpivot, dropping the "
             "same columns), metadata enrichment, and null-value drop. Parity on the long shape."
+        ),
+    ),
+    "processing": CaptureSpec(
+        module="processing",
+        r_sources=(
+            _GENERAL_CONSTANTS,
+            _ASSERTIONS,
+            _DATA_TABLE,
+            _STRING_NORMALIZATION,
+            _DATA_CLEANING,
+            _FILE_METADATA,
+            _DISCOVERY,
+            _HEADER_NORMALIZATION,
+            _READ_UTILS,
+            _SHEET_READ,
+            _BATCHING,
+            _TRANSFORM_UTILS,
+            _RESHAPE,
+            _PROCESSING,
+        ),
+        preamble=_PROCESSING_PREAMBLE,
+        exports={
+            "long_columns": "colnames(long)",
+            "long_nrow": "as.character(nrow(long))",
+            "commodity": "long[['commodity']]",
+            "variable": "long[['variable']]",
+            "unit": "long[['unit']]",
+            "hemisphere": "long[['hemisphere']]",
+            "continent": "long[['continent']]",
+            "polity": "long[['polity']]",
+            "footnotes": "long[['footnotes']]",
+            "year": "long[['year']]",
+            "value": "long[['value']]",
+            "document": "long[['document']]",
+            "notes": "long[['notes']]",
+            "yearbook": "long[['yearbook']]",
+        },
+        description=(
+            "Fused read+transform (read_transform_pipeline_files) over the whole corpus: the "
+            "combined long frame from discovering, batch-reading, and transforming every "
+            "workbook. Python sequential AND parallel output must match this byte-for-byte."
         ),
     ),
 }
