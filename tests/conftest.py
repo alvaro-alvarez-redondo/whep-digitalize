@@ -6,12 +6,15 @@ long-format frame. Deterministic and side-effect free (temp dirs only).
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 
 import polars as pl
 import pytest
 
 from whep_digitize.general.config import Config, load_pipeline_config
+
+_CORPUS = Path(__file__).parent / "fixtures" / "corpus"
 
 
 @pytest.fixture
@@ -24,6 +27,14 @@ def project_dir(tmp_path: Path) -> Path:
 def config(project_dir: Path) -> Config:
     """A config rooted at the temporary project directory."""
     return load_pipeline_config(root=project_dir)
+
+
+@pytest.fixture
+def corpus_config(config: Config) -> Config:
+    """A config whose raw import folder points at the committed fixture corpus."""
+    import_ = dataclasses.replace(config.paths.data.import_, raw=_CORPUS)
+    data = dataclasses.replace(config.paths.data, import_=import_)
+    return dataclasses.replace(config, paths=dataclasses.replace(config.paths, data=data))
 
 
 @pytest.fixture

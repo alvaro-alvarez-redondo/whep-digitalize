@@ -28,6 +28,29 @@ _DISCOVERY = "r/1-import_pipeline/10-file_io/10-discovery.R"
 _BATCHING = "r/1-import_pipeline/11-reading/11-batching.R"
 _PROCESSING = "r/1-import_pipeline/12-transform/12-processing.R"
 _VALIDATE = "r/1-import_pipeline/13-output/13-validate.R"
+_SORTING = "r/0-general_pipeline/02-helpers/02-sorting.R"
+_OUTPUT = "r/1-import_pipeline/13-output/13-output.R"
+
+# Stage-level (run_import_pipeline) golden: the orchestration body is replicated inline over
+# the whole corpus (R's run_import_pipeline auto-sources via here::here + auto-runs, which the
+# harness cannot do; the ported logic is the discover -> fused read+transform -> drop_na ->
+# validate -> consolidate -> sort sequence). Sys.Date is pinned for deterministic year ranges.
+_STAGE_PREAMBLE = (
+    "Sys.Date <- function() as.Date('2025-06-15')\n"
+    "config <- list("
+    "column_required = c('continent','polity','unit','footnotes'), "
+    "column_id = c('commodity','variable','unit','hemisphere','continent','polity','footnotes'), "
+    "column_order = c('hemisphere','continent','polity','commodity','variable','unit','year',"
+    "'value','notes','footnotes','yearbook','document'), "
+    "defaults = list(notes_value = NA_character_, unknown_commodity = '(unknown_commodity)'))\n"
+    "file_list <- discover_files(file.path(fixtures_dir, 'corpus'))\n"
+    "fused <- read_transform_pipeline_files(file_list, config)\n"
+    "long <- drop_na_value_rows(fused$transformed$long_raw)\n"
+    "vres <- validate_long_dt_by_document(long, config)\n"
+    "audited <- if (nrow(vres$data) == 0L) list() else list(vres$data)\n"
+    "cons <- consolidate_audited_dt(audited, config)\n"
+    "data <- sort_pipeline_stage_dt(cons$data)"
+)
 
 # Validate a multi-document long frame. Pin Sys.Date so the plausible-year range in the error
 # text is deterministic (current_year 2025 -> max_year 2026); the Python parity test passes the
@@ -291,6 +314,53 @@ CAPTURES: dict[str, CaptureSpec] = {
             "error strings in the exact 4-key sort order (mandatory / year / duplicate), plus the "
             "document-major reordered data. Covers null + empty missing values, plain/range/"
             "inverted year errors, and a duplicate with a null key value."
+        ),
+    ),
+    "import_stage": CaptureSpec(
+        module="import_stage",
+        r_sources=(
+            _GENERAL_CONSTANTS,
+            _ASSERTIONS,
+            _DATA_TABLE,
+            _STRING_NORMALIZATION,
+            _DATA_CLEANING,
+            _SORTING,
+            _FILE_METADATA,
+            _DISCOVERY,
+            _HEADER_NORMALIZATION,
+            _READ_UTILS,
+            _SHEET_READ,
+            _BATCHING,
+            _TRANSFORM_UTILS,
+            _RESHAPE,
+            _PROCESSING,
+            _VALIDATE,
+            _OUTPUT,
+        ),
+        preamble=_STAGE_PREAMBLE,
+        exports={
+            "data_columns": "colnames(data)",
+            "data_nrow": "as.character(nrow(data))",
+            "hemisphere": "data[['hemisphere']]",
+            "continent": "data[['continent']]",
+            "polity": "data[['polity']]",
+            "commodity": "data[['commodity']]",
+            "variable": "data[['variable']]",
+            "unit": "data[['unit']]",
+            "year": "data[['year']]",
+            "value": "data[['value']]",
+            "notes": "data[['notes']]",
+            "footnotes": "data[['footnotes']]",
+            "yearbook": "data[['yearbook']]",
+            "document": "data[['document']]",
+            "reading_errors": "fused$errors",
+            "validation_errors": "vres$errors",
+            "warnings": "cons$warnings",
+        },
+        description=(
+            "Stage-level run_import_pipeline over the whole corpus (orchestration replicated "
+            "inline): the consolidated, canonically-sorted long frame plus the reading / "
+            "validation / consolidation diagnostics. Python run_import_pipeline must match."
         ),
     ),
 }

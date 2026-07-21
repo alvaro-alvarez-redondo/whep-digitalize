@@ -270,6 +270,33 @@ vectorized path replaces; the runner uses `_by_document`).
 
 **Gates:** ruff clean · mypy strict clean (74 files) · **248 tests pass** (+16).
 
+## Phase 1 COMPLETE — ingest output consolidate + runner wiring — ✅ (2026-07-22)
+
+Closed out Stage 1 (ingest) end-to-end:
+
+- **`output/consolidate.py`** (`13-output.R`) — `consolidate_audited_dt` (drop `None` frames,
+  `pl.concat(how="diagonal")` for R `rbindlist(use.names, fill)`, fill missing schema columns
+  null, reorder to `column_order` with extras last) + `validate_output_column_order` (unique +
+  full-target-schema check) + `ConsolidateResult`.
+- **`runner.py`** (`run_import_pipeline.R`) — **removed `StageNotImplementedError`**; wired the
+  full contract: `discover_pipeline_files` → `read_transform_pipeline_files` → `drop_na_value_rows`
+  → `validate_long_dt_by_document` → `consolidate_audited_dt` → `sort_pipeline_stage_dt` →
+  `ImportResult(data, wide_raw, diagnostics)`. `current_year` param for deterministic validation.
+  Deferred (output-preserving): R's `here::here` auto-sourcing / auto-run, checkpoint cache, and
+  `progressr` bars (progress lands in Phase 5).
+
+**STAGE-LEVEL parity (the milestone):** new `import_stage` CaptureSpec replicates the R
+`run_import_pipeline` orchestration inline over the whole corpus. Python `run_import_pipeline`
+matches R **byte-for-byte**: consolidated long frame 313×12 in canonical sort order (every
+column), **all 232 validation-error strings verbatim + in order**, and reading-errors/warnings.
+Updated the Stage-0 `test_ingest_stage_pending` contract test (ingest is no longer a stub;
+postpro/export remain). Added a reusable `corpus_config` conftest fixture (raw dir → fixture
+corpus).
+
+**Gates:** ruff clean · mypy strict clean (78 files) · **271 tests pass** (+23). **Stage 1
+(ingest) is done** — `run_import_pipeline` produces a parity-correct `ImportResult` on the
+frozen corpus.
+
 ## Baseline metrics (autocode)
 
 | metric | value |
@@ -284,12 +311,12 @@ vectorized path replaces; the runner uses `_by_document`).
 Per [migration-roadmap.md](docs/migration-roadmap.md). Ingest file_io (1a) is now done.
 Continue the two parallel high-value tracks:
 
-- **Ingest (Stage 1):** 1a (file_io), 1b (reading), 1c (transform), and the 1d
-  `output.validate` are done. Next: `output.consolidate` (`13-output.R`, LOW-MED —
-  `consolidate_audited_dt` via `pl.concat(how="diagonal")` + canonical column reordering,
-  `validate_output_column_order`); then 1e `ingest.runner` wiring `discover_pipeline_files` →
-  `read_transform_pipeline_files` → `validate_long_dt_by_document` → consolidate into the
-  `ImportResult` contract.
+- **Ingest (Stage 1): DONE** — all modules ported, runner wired, stage-level parity green on
+  the frozen corpus. `run_import_pipeline(config) -> ImportResult` is production-ready.
+- **Next tracks (parallel):** (B) **Postpro rule engine** (Stage 2 critical path) — bottom-up
+  `matching_strategy` → `matching_values` → `target_apply`; (C) **Postpro non-engine** — audit,
+  standardize_units, diagnostics, utilities; (D) **Export** (Stage 3). Then Phase 5 wires
+  `run_pipeline` end-to-end (ingest real data → postpro → export) with progress + parallelism.
 - **Postpro rule engine (Stage 2 critical path):** bottom-up `matching_strategy` →
   `matching_values` → `target_apply`.
 

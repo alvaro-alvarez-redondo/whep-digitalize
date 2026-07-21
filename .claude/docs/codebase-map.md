@@ -53,10 +53,11 @@ R helpers intentionally **not** ported: `02-data-table.R` (coercion — no-op in
 
 ---
 
-## Stage 1 — ingest (`whep_digitize.ingest`) — [scaffold]
+## Stage 1 — ingest (`whep_digitize.ingest`) — [done]
 
-Public: `runner.run_import_pipeline(config, options=None) -> ImportResult`. Ports
-`r/1-import_pipeline/`. Migrate bottom-up.
+Public: `runner.run_import_pipeline(config, options=None, current_year=None) -> ImportResult`
+(**wired**: discover → fused read+transform → drop-null → validate-by-document → consolidate →
+sort). Stage-level parity vs R verified on the frozen corpus. Ports `r/1-import_pipeline/`.
 
 | Planned module | Functions to port | R source | Risk |
 |----------------|-------------------|----------|------|
@@ -70,7 +71,8 @@ Public: `runner.run_import_pipeline(config, options=None) -> ImportResult`. Port
 | `transform/reshape.py` **[done]** | `reshape_to_long` (unpivot), `add_metadata`, `transform_file_dt`, `resolve_commodity_name`, `build_empty_transform_result`, `TransformResult` | `12-reshape.R` | **HIGH** |
 | `transform/processing.py` **[done]** | `read_transform_pipeline_files` (fused, `ProcessPoolExecutor`, deterministic + sequential fallback), `transform_single_file`, `ReadTransformResult` | `12-processing.R` | **HIGH** |
 | `output/validate.py` **[done]** | `validate_long_dt_by_document`, `ValidationResult` (internal per-check helpers) | `13-validate.R` | **HIGH** |
-| `output/consolidate.py` | `consolidate_audited_dt`, `validate_output_column_order` | `13-output.R` | LOW-MED |
+| `output/consolidate.py` **[done]** | `consolidate_audited_dt`, `validate_output_column_order`, `ConsolidateResult` | `13-output.R` | LOW-MED |
+| `runner.py` **[done]** | `run_import_pipeline` (full wiring; checkpoint/progress deferred to Phase 5) | `run_import_pipeline.R` | MEDIUM |
 
 ---
 

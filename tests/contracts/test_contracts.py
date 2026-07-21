@@ -16,7 +16,6 @@ from whep_digitize.contracts import (
 from whep_digitize.export.runner import run_export_pipeline
 from whep_digitize.general.config import Config
 from whep_digitize.general.errors import ContractError, StageNotImplementedError
-from whep_digitize.ingest.runner import run_import_pipeline
 from whep_digitize.postpro.runner import run_postpro_pipeline
 
 
@@ -42,13 +41,6 @@ def test_assert_export_paths_contract_rejects_empty() -> None:
     result = ExportResult(processed_paths={}, lists_paths={"c": Path("x.xlsx")})
     with pytest.raises(ContractError):
         assert_export_paths_contract(result)
-
-
-def test_ingest_stage_pending(config: Config) -> None:
-    with pytest.raises(StageNotImplementedError) as excinfo:
-        run_import_pipeline(config)
-    assert excinfo.value.stage == "ingest"
-    assert "1-import_pipeline" in excinfo.value.r_source
 
 
 def test_postpro_stage_pending(config: Config) -> None:
