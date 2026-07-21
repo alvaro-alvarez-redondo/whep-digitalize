@@ -91,10 +91,10 @@ warn_unused_ignores = true
 disallow_untyped_defs = true
 files = ["src", "tests"]
 
-# Third-party modules without type stubs that Stage 0 imports. Stage migrations add
-# their own entries (e.g. fastexcel for ingest) as they introduce those imports.
+# Third-party modules without type stubs. Stage migrations add their own entries as they
+# introduce those imports (fastexcel/xlsxwriter at the ingest Excel IO boundary).
 [[tool.mypy.overrides]]
-module = ["anyascii.*"]
+module = ["anyascii.*", "fastexcel.*", "xlsxwriter.*"]
 ignore_missing_imports = true
 
 # ---------------------------------------------------------------------------

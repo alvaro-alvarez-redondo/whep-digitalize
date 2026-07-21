@@ -53,24 +53,26 @@ R helpers intentionally **not** ported: `02-data-table.R` (coercion — no-op in
 
 ---
 
-## Stage 1 — ingest (`whep_digitize.ingest`) — [scaffold]
+## Stage 1 — ingest (`whep_digitize.ingest`) — [done]
 
-Public: `runner.run_import_pipeline(config, options=None) -> ImportResult`. Ports
-`r/1-import_pipeline/`. Migrate bottom-up.
+Public: `runner.run_import_pipeline(config, options=None, current_year=None) -> ImportResult`
+(**wired**: discover → fused read+transform → drop-null → validate-by-document → consolidate →
+sort). Stage-level parity vs R verified on the frozen corpus. Ports `r/1-import_pipeline/`.
 
 | Planned module | Functions to port | R source | Risk |
 |----------------|-------------------|----------|------|
-| `file_io/discovery.py` | `discover_files` | `10-discovery.R` | LOW |
-| `file_io/metadata.py` | `extract_file_metadata`, `build_empty_file_metadata` | `10-metadata.R` | MEDIUM |
-| `reading/read_utils.py` | read-result `(data, errors)` type + guards | `11-read-utils.R` | LOW |
-| `reading/sheet_read.py` | `read_excel_sheet`, `read_file_sheets`, `compute_non_empty_base_rows` | `11-sheet-read.R` | MEDIUM |
-| `reading/header_normalization.py` | `normalize_header_names`, `validate_header_normalization`, `resolve_canonical_header_renames` | `11-header-normalization.R` | **HIGH** |
-| `reading/batching.py` | `split_workbook_batches`, worker resolvers, `read_workbook_batch` | `11-batching.R` | MEDIUM |
-| `transform/transform_utils.py` | `identify_year_columns`, `normalize_key_fields`, `convert_year_columns` | `12-transform-utils.R` | **HIGH** |
-| `transform/reshape.py` | `reshape_to_long` (unpivot), `add_metadata`, `transform_file_dt`, `resolve_commodity_name` | `12-reshape.R` | **HIGH** |
-| `transform/processing.py` | `read_transform_pipeline_files` (fused, parallel), `transform_single_file` | `12-processing.R` | **HIGH** |
-| `output/validate.py` | `validate_long_dt_by_document` (+ per-check helpers) | `13-validate.R` | **HIGH** |
-| `output/consolidate.py` | `consolidate_audited_dt`, `validate_output_column_order` | `13-output.R` | LOW-MED |
+| `file_io/discovery.py` **[done]** | `discover_files`, `discover_pipeline_files` | `10-discovery.R` | LOW |
+| `file_io/metadata.py` **[done]** | `extract_file_metadata`, `build_empty_file_metadata` | `10-metadata.R` | MEDIUM |
+| `reading/read_utils.py` **[done]** | `ReadResult`, `SafeReadResult`, `safe_execute_read`, `create_empty_read_result`, `has_read_errors`, `normalize_pipeline_read_result`, `build_read_error` | `11-read-utils.R` | LOW |
+| `reading/sheet_read.py` **[done]** | `read_excel_sheet`, `read_file_sheets`, `compute_non_empty_base_rows` | `11-sheet-read.R` | MEDIUM |
+| `reading/header_normalization.py` **[done]** | `normalize_header_name`, `normalize_header_names`, `validate_header_normalization`, `resolve_canonical_header_renames`, `HeaderRenames` | `11-header-normalization.R` | **HIGH** |
+| `reading/batching.py` **[done]** | `split_workbook_batches`, `resolve_import_workbook_batch_size`, `resolve_import_effective_workers`, `read_workbook_batch`, `BatchReadResult` (parallel `read_pipeline_files` deferred to runner) | `11-batching.R` | MEDIUM |
+| `transform/transform_utils.py` **[done]** | `identify_year_columns`, `normalize_key_fields`, `convert_year_columns` | `12-transform-utils.R` | **HIGH** |
+| `transform/reshape.py` **[done]** | `reshape_to_long` (unpivot), `add_metadata`, `transform_file_dt`, `resolve_commodity_name`, `build_empty_transform_result`, `TransformResult` | `12-reshape.R` | **HIGH** |
+| `transform/processing.py` **[done]** | `read_transform_pipeline_files` (fused, `ProcessPoolExecutor`, deterministic + sequential fallback), `transform_single_file`, `ReadTransformResult` | `12-processing.R` | **HIGH** |
+| `output/validate.py` **[done]** | `validate_long_dt_by_document`, `ValidationResult` (internal per-check helpers) | `13-validate.R` | **HIGH** |
+| `output/consolidate.py` **[done]** | `consolidate_audited_dt`, `validate_output_column_order`, `ConsolidateResult` | `13-output.R` | LOW-MED |
+| `runner.py` **[done]** | `run_import_pipeline` (full wiring; checkpoint/progress deferred to Phase 5) | `run_import_pipeline.R` | MEDIUM |
 
 ---
 

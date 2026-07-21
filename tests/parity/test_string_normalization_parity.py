@@ -24,6 +24,9 @@ from registry import CAPTURES
 from whep_digitize.general.helpers.strings import clean_footnote_column, normalize_string
 
 _SPEC = CAPTURES["string_normalization"]
+_FIXTURE_NAME = _SPEC.fixture
+assert _FIXTURE_NAME is not None  # this spec always declares a JSON fixture
+_FIXTURE_PATH = FIXTURES_DIR / _FIXTURE_NAME
 
 # Python equivalent of each R export declared in the capture registry.
 _PY_EXPORTS: dict[str, Callable[[pl.Series], pl.Series]] = {
@@ -40,7 +43,7 @@ def _load_json(path: Path) -> list[str | None]:
 @pytest.fixture(scope="module")
 def inputs() -> pl.Series:
     """The frozen edge-case string vector, as the Python functions receive it."""
-    return pl.Series("value", _load_json(FIXTURES_DIR / _SPEC.fixture), dtype=pl.String)
+    return pl.Series("value", _load_json(_FIXTURE_PATH), dtype=pl.String)
 
 
 @pytest.mark.parity

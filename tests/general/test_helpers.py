@@ -54,6 +54,31 @@ def test_normalize_filename() -> None:
     assert strings.normalize_filename(None) == "unknown"
 
 
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("¹", "¹"),  # superscript 1: ICU leaves it (anyascii would give "1")
+        ("²", "²"),  # superscript 2
+        ("°", "°"),  # degree sign (anyascii -> "deg")
+        ("£", "£"),  # pound sign (anyascii -> "GBP")
+        ("µ", "µ"),  # micro sign (anyascii -> "u")
+        ("½", " 1/2"),  # vulgar half: ICU adds a leading space (anyascii -> "1/2")
+        ("±", "+/-"),  # plus-minus (anyascii -> "+-")
+    ],
+)
+def test_transliterate_matches_icu_on_symbols(raw: str, expected: str) -> None:
+    # Regression: anyascii diverges from ICU "Latin-ASCII" on these symbols; the override
+    # in transliterate_ascii_lower reproduces ICU so match/header keys stay byte-identical.
+    assert strings.transliterate_ascii_lower(raw) == expected
+
+
+def test_normalize_text_superscript_footnote_marker() -> None:
+    # Corpus case (belgian congo¹): ICU keeps the superscript -> the non-alnum step drops
+    # it; anyascii would fold it to "1" and keep it. Match keys must follow ICU.
+    assert strings.normalize_text("Belgian Congo¹") == "belgian congo"
+    assert strings.normalize_text("A¹B") == "a b"  # superscript becomes a separator
+
+
 # --------------------------------------------------------------------------- numeric
 
 
