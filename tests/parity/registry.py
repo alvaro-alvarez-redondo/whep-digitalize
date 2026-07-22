@@ -56,6 +56,10 @@ _PAYLOAD_APPLICATION = "r/2-postpro_pipeline/23-postpro_rule_engine/23-payload-a
 _STAGE_INPUTS = "r/2-postpro_pipeline/22-clean_harmonize_data/22-stage-inputs.R"
 _CONTROLS_CACHE = "r/2-postpro_pipeline/22-clean_harmonize_data/22-controls-cache.R"
 _LAYER_RUNNER = "r/2-postpro_pipeline/22-clean_harmonize_data/22-layer-runner.R"
+# Standardize units core (C3): numeric coercion, rule prep, and the affine-conversion engine.
+_NUMERIC_COERCION = "r/0-general_pipeline/02-helpers/02-numeric-coercion.R"
+_STANDARDIZE_RULES_SETUP = "r/2-postpro_pipeline/24-standardize_units/24-rules-setup.R"
+_STANDARDIZE_ENGINE = "r/2-postpro_pipeline/24-standardize_units/24-standardize-engine.R"
 
 # Stage-level (run_import_pipeline) golden: the orchestration body is replicated inline over
 # the whole corpus (R's run_import_pipeline auto-sources via here::here + auto-runs, which the
@@ -330,6 +334,24 @@ _LAYER_BATCH_PREAMBLE = (
     "diag_clean <- attr(res_clean, 'layer_diagnostics'); mp_clean <- diag_clean$multi_pass\n"
     "res_harm <- run_rule_stage_layer_batch(dataset, config, 'harmonize')\n"
     "diag_harm <- attr(res_harm, 'layer_diagnostics'); mp_harm <- diag_harm$multi_pass"
+)
+
+# standardize (C3): prepare rules + apply_standardize_rules over one rich scenario — a specific
+# prefixed rule (egg "1000 egg" -> revert -> tonne), a kg fallback (wheat), an offset conversion
+# (temp celsius->fahrenheit), a comma-thousands prefix fold (cow "1,000 head" -> base head ->
+# fallback tonne), and an unmatched row (milk hectoliter). matched_rule_counts sorted for a
+# stable compare.
+_STANDARDIZE_PREAMBLE = (
+    "mk <- function(x) as.character(x)\n"
+    "mapped <- data.table::data.table(commodity = mk(values$commodity), "
+    "unit = mk(values$unit), value = mk(values$value))\n"
+    "raw_rules <- data.table::data.table(commodity_key = mk(values$rule_commodity), "
+    "unit_source = mk(values$rule_source), unit_target = mk(values$rule_target), "
+    "unit_factor = mk(values$rule_factor), unit_offset = mk(values$rule_offset))\n"
+    "prepared <- prepare_standardize_rules(raw_rules)\n"
+    "res <- apply_standardize_rules(mapped, prepared, 'unit', 'value', 'commodity')\n"
+    "mrc <- data.table::as.data.table(res$matched_rule_counts)[order("
+    "rule_commodity_match_key, applied_commodity_match_key, unit_source_key)]"
 )
 
 CAPTURES: dict[str, CaptureSpec] = {
@@ -882,6 +904,38 @@ CAPTURES: dict[str, CaptureSpec] = {
             "rewrites unit on pass 1 and no-ops on pass 2 -> converges (changed_value_count==0) "
             "in 2 passes. Asserts the converged data, stop_reason, passes_executed, converged, "
             "and matched_count match R — the full payload composition + convergence loop."
+        ),
+    ),
+    "standardize": CaptureSpec(
+        module="standardize",
+        r_sources=(
+            _GENERAL_CONSTANTS,
+            _ASSERTIONS,
+            _STRING_NORMALIZATION,
+            _NUMERIC_COERCION,
+            _STANDARDIZE_RULES_SETUP,
+            _STANDARDIZE_ENGINE,
+        ),
+        fixture="synthetic/standardize_inputs.json",
+        preamble=_STANDARDIZE_PREAMBLE,
+        exports={
+            "value": "res$data$value",
+            "unit": "res$data$unit",
+            "commodity": "res$data$commodity",
+            "matched": "as.character(res$matched_count)",
+            "unmatched": "as.character(res$unmatched_count)",
+            "mrc_nrow": "as.character(nrow(mrc))",
+            "mrc_applied": "mrc$applied_commodity_match_key",
+            "mrc_affected": "as.character(mrc$affected_rows)",
+            "mrc_effective": "as.character(mrc$unit_factor_effective)",
+        },
+        description=(
+            "Unit standardization core (24-rules-setup.R + 24-standardize-engine.R): "
+            "prepare_standardize_rules + apply_standardize_rules over fold / revert / two-stage "
+            "match / affine convert. Asserts the converted value + unit, matched/unmatched counts, "
+            "and the sorted matched_rule_counts (affected rows + effective multiplier) match R — "
+            "incl. a specific prefixed rule, kg fallback, celsius->fahrenheit offset, and a "
+            "comma-thousands prefix fold (parity risk #9)."
         ),
     ),
 }

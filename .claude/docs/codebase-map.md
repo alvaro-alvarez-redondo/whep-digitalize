@@ -102,8 +102,8 @@ Public: `runner.run_postpro_pipeline(raw, config, dataset_name=None, options=Non
 | `rule_engine/footnote_rules.py` **[done]** | explode→match→resolve→reconstruct | `23-footnote-rules.R` | **HIGH** (top) |
 | `rule_engine/schema_validation.py` **[done]** | coerce/validate rules, conditional dictionary | `23-schema-validation.R` | MED-HIGH |
 | `rule_engine/payload_application.py` **[done]** | `apply_rule_payload`, execution plan | `23-payload-application.R` | LOW-MED |
-| `standardize_units/engine.py` | `apply_standardize_rules` (fold, 2-stage, affine) | `24-standardize-engine.R` | **HIGH** |
-| `standardize_units/rules_setup.py` | rule load, aliasing, chained-rule guard | `24-rules-setup.R` | MEDIUM |
+| `standardize_units/engine.py` **[done]** | `apply_standardize_rules` (fold, 2-stage, affine), `StandardizeResult` | `24-standardize-engine.R` | **HIGH** |
+| `standardize_units/rules_setup.py` **[done]** | aliasing, validation, `prepare_standardize_rules` (xlsx readers → C4) | `24-rules-setup.R` | MEDIUM |
 | `standardize_units/aggregation.py` | duplicate-group sum (all-NA→NA) | `24-standardize-aggregation.R` | MEDIUM |
 | `standardize_units/orchestration.py` | `run_standardize_units_layer_batch` + audit | `24-standardize-orchestration.R` | MEDIUM |
 | `diagnostics/preflight.py` | `collect_postpro_preflight`, `assert_postpro_preflight` | `25-preflight.R` | LOW |
