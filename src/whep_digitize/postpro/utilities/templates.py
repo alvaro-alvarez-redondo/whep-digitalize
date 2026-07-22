@@ -1,0 +1,226 @@
+"""Postpro / utilities — rule-template workbooks and rule-file loading.
+
+The Python port of ``r/2-postpro_pipeline/21-postpro_utilities/21-template-rules.R``:
+
+* :func:`read_rule_table` — read a rule file (``.csv`` / ``.xlsx`` / ``.xls``) **all-as-text**
+  (rules match character data, so ``"007"`` / ``"1000.0"`` must keep their exact source string).
+  For workbooks, every sheet whose columns — after stripping a ``clean_`` / ``harmonize_``
+  prefix — match the canonical rule schema (no duplicates, no unexpected columns, all required
+  present) is kept and row-bound in workbook order; a file with no matching sheet aborts.
+* :func:`write_stage_rule_template` / :func:`generate_postpro_rule_templates` — write the unified
+  clean/harmonize rule template (canonical columns + a guidance sheet).
+* :func:`load_stage_rule_payloads` — discover the stage's ``clean_*`` / ``harmonize_*`` rule
+  files (deterministically ordered) and read each into a :class:`RulePayload`.
+
+Excel reads use ``fastexcel`` + ``pl.read_excel(engine="calamine", infer_schema_length=0)`` (the
+readxl ``col_types="text"`` analogue); writes use ``openpyxl`` (the writexl analogue).
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+from pathlib import Path
+
+import fastexcel
+import polars as pl
+from openpyxl import Workbook
+
+from whep_digitize.general.config import Config
+from whep_digitize.general.constants import get_pipeline_constants
+from whep_digitize.general.directories import ensure_directories_exist
+from whep_digitize.general.errors import ValidationError
+from whep_digitize.general.helpers.assertions import require
+from whep_digitize.postpro.utilities.output_roots import initialize_postpro_output_root
+from whep_digitize.postpro.utilities.stage_definitions import (
+    get_canonical_rule_columns,
+    validate_postpro_stage_name,
+)
+
+_CONSTANTS = get_pipeline_constants()
+_TEMPLATE_FILE_NAME = _CONSTANTS.postpro.clean_harmonize_template_file_name
+_OPTIONAL_RULE_COLUMN = _CONSTANTS.postpro.stage_source_value_column
+_STAGE_PREFIX_RE = re.compile(r"^(clean|harmonize)_")
+_RULE_EXTENSION_RE = re.compile(r"\.(xlsx|xls|csv)$")
+_GUIDANCE_NOTES = (
+    "Fill all required columns.",
+    "Column names must remain unchanged.",
+    "Rows define conditional source-target replacements.",
+)
+_STAGE_IMPORT_DIR_ATTR = {"clean": "cleaning", "harmonize": "harmonization"}
+
+
+@dataclass(frozen=True, slots=True)
+class RulePayload:
+    """One discovered rule file (R ``list(rule_file_id, rule_file_path, raw_rules)``).
+
+    Attributes:
+        rule_file_id: The rule file's base name.
+        rule_file_path: The rule file's absolute forward-slash path.
+        raw_rules: The rule rows read all-as-text (pre-canonicalization).
+    """
+
+    rule_file_id: str
+    rule_file_path: str
+    raw_rules: pl.DataFrame
+
+
+def read_rule_table(file_path: Path | str) -> pl.DataFrame:
+    """Read a rule file all-as-text into a frame.
+
+    The Python port of R ``read_rule_table``.
+
+    Args:
+        file_path: Path to a ``.csv`` / ``.xlsx`` / ``.xls`` rule file.
+
+    Returns:
+        The rule rows as an all-``String`` frame (workbook sheets row-bound in order).
+
+    Raises:
+        ValidationError: If the path is blank/missing, the extension is unsupported, or no
+            workbook sheet matches the canonical rule schema.
+    """
+    path = Path(file_path)
+    require(len(str(path)) >= 1, "file_path must be a non-empty path")
+    require(path.is_file(), f"rule file does not exist: {path}")
+
+    extension = path.suffix.lower().lstrip(".")
+    if extension == "csv":
+        return pl.read_csv(path, infer_schema_length=0)
+    if extension in ("xlsx", "xls"):
+        return _read_rule_workbook(path)
+    raise ValidationError(f"Unsupported rule extension for {path}")
+
+
+def _read_rule_workbook(path: Path) -> pl.DataFrame:
+    """Read and row-bind every canonical-schema-matching worksheet of a rule workbook."""
+    canonical_columns = get_canonical_rule_columns()
+    required_columns = tuple(
+        column for column in canonical_columns if column != _OPTIONAL_RULE_COLUMN
+    )
+    sheet_names = list(fastexcel.read_excel(str(path)).sheet_names)
+
+    matching_frames: list[pl.DataFrame] = []
+    for sheet_name in sheet_names:
+        sheet = pl.read_excel(path, sheet_name=sheet_name, engine="calamine", infer_schema_length=0)
+        available = sheet.columns
+        normalized = [_STAGE_PREFIX_RE.sub("", column) for column in available]
+        has_duplicate = len(set(normalized)) != len(normalized)
+        has_unexpected = any(column not in canonical_columns for column in normalized)
+        has_required = all(column in normalized for column in required_columns)
+        if has_duplicate or has_unexpected or not has_required:
+            continue
+        renames = {old: new for old, new in zip(available, normalized, strict=True) if old != new}
+        matching_frames.append(sheet.rename(renames) if renames else sheet)
+
+    if not matching_frames:
+        raise ValidationError(
+            f"No worksheets with matching rule columns found in {path}. "
+            f"Required columns: {', '.join(required_columns)}. "
+            f"Available sheets: {', '.join(sheet_names)}"
+        )
+    return pl.concat(matching_frames, how="diagonal")
+
+
+def write_stage_rule_template(templates_dir: Path, overwrite: bool = True) -> Path:
+    """Write the unified clean/harmonize rule template workbook.
+
+    The Python port of R ``write_stage_rule_template``: a ``clean_harmonize_template`` sheet with
+    the canonical rule columns (header only) plus a ``guidance`` sheet.
+
+    Args:
+        templates_dir: The directory to write the template into.
+        overwrite: When ``False`` and the template already exists, it is left untouched.
+
+    Returns:
+        The template file path.
+
+    Raises:
+        ValidationError: If ``templates_dir`` is blank.
+    """
+    require(len(str(templates_dir)) >= 1, "templates_dir must be a non-empty path")
+    template_path = templates_dir / _TEMPLATE_FILE_NAME
+    if template_path.exists() and not overwrite:
+        return template_path
+
+    workbook = Workbook()
+    template_sheet = workbook.active
+    template_sheet.title = "clean_harmonize_template"
+    template_sheet.append(list(get_canonical_rule_columns()))
+
+    guidance_sheet = workbook.create_sheet("guidance")
+    guidance_sheet.append(["note"])
+    for note in _GUIDANCE_NOTES:
+        guidance_sheet.append([note])
+
+    ensure_directories_exist([templates_dir])
+    workbook.save(template_path)
+    return template_path
+
+
+def generate_postpro_rule_templates(config: Config, overwrite: bool = True) -> Path:
+    """Create the post-processing output root and write the rule template.
+
+    The Python port of R ``generate_postpro_rule_templates``.
+
+    Args:
+        config: The resolved pipeline configuration.
+        overwrite: Whether to overwrite an existing template.
+
+    Returns:
+        The written template path.
+    """
+    paths = initialize_postpro_output_root(config)
+    return write_stage_rule_template(paths.templates_dir, overwrite=overwrite)
+
+
+def discover_stage_rule_files(config: Config, stage_name: str) -> list[Path]:
+    """Discover a stage's rule files, deterministically ordered by file name (C-locale).
+
+    Shared by :func:`load_stage_rule_payloads` and the runtime-cache key builder. The stage
+    import directory is created if absent (mirrors R ``ensure_directories_exist``).
+
+    Args:
+        config: The resolved pipeline configuration.
+        stage_name: The execution stage (``clean`` or ``harmonize``).
+
+    Returns:
+        The ordered ``clean_*`` / ``harmonize_*`` rule file paths (``.xlsx`` / ``.xls`` / ``.csv``).
+    """
+    stage = validate_postpro_stage_name(stage_name)
+    import_dir = getattr(config.paths.data.import_, _STAGE_IMPORT_DIR_ATTR[stage])
+    ensure_directories_exist([import_dir])
+
+    stage_prefix = f"{stage}_"
+    return sorted(
+        (
+            entry
+            for entry in import_dir.iterdir()
+            if entry.is_file()
+            and _RULE_EXTENSION_RE.search(entry.name)
+            and entry.name.startswith(stage_prefix)
+        ),
+        key=lambda entry: entry.name,
+    )
+
+
+def load_stage_rule_payloads(config: Config, stage_name: str) -> list[RulePayload]:
+    """Discover a stage's rule files (deterministically ordered) and read each all-as-text.
+
+    The Python port of R ``load_stage_rule_payloads``.
+
+    Args:
+        config: The resolved pipeline configuration.
+        stage_name: The execution stage (``clean`` or ``harmonize``).
+
+    Returns:
+        One :class:`RulePayload` per matching rule file, ordered by file name (C-locale).
+    """
+    return [
+        RulePayload(
+            rule_file_id=entry.name,
+            rule_file_path=entry.resolve().as_posix(),
+            raw_rules=read_rule_table(entry),
+        )
+        for entry in discover_stage_rule_files(config, stage_name)
+    ]

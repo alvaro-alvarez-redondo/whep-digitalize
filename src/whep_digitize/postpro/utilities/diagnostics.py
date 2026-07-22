@@ -1,0 +1,63 @@
+"""Postpro / utilities — per-layer diagnostics.
+
+The Python port of ``r/2-postpro_pipeline/21-postpro_utilities/21-diagnostics.R``
+(``build_layer_diagnostics``): summarize one clean/standardize/harmonize layer's audit table
+into a :class:`~whep_digitize.contracts.LayerDiagnostics`.
+
+The R object also carried ``layer_name`` / ``rows_out`` / a wall-clock timestamp /
+``idempotence_passed`` / ``validation_passed``; the typed contract keeps only the deterministic
+matched/unmatched counts, status, and message (the non-deterministic timestamp is deliberately
+dropped so results are reproducible). ``rows_out`` and ``layer_name`` are validated for interface
+parity but do not feed the reduced contract.
+"""
+
+from __future__ import annotations
+
+import polars as pl
+
+from whep_digitize.contracts import LayerDiagnostics
+from whep_digitize.general.helpers.assertions import require
+
+_AFFECTED_ROWS = "affected_rows"
+_MATCHED_MESSAGE = "Rules applied successfully"
+_UNMATCHED_MESSAGE = "No rows matched available rules"
+
+
+def build_layer_diagnostics(
+    layer_name: str, rows_in: int, rows_out: int, audit_dt: pl.DataFrame
+) -> LayerDiagnostics:
+    """Build the diagnostics for one processing layer from its audit table.
+
+    The Python port of R ``build_layer_diagnostics``: ``matched_count`` is the sum of the audit
+    table's ``affected_rows`` (``0`` when empty), ``unmatched_count`` is ``max(rows_in -
+    matched, 0)``, and the status/message reflect whether any rows matched.
+
+    Args:
+        layer_name: The layer label (validated; not stored in the reduced contract).
+        rows_in: Row count before processing (drives ``unmatched_count``).
+        rows_out: Row count after processing (validated for interface parity; unused downstream).
+        audit_dt: The layer's audit table (``affected_rows`` column drives ``matched_count``).
+
+    Returns:
+        The :class:`LayerDiagnostics` for the layer (``multi_pass`` is set by the layer driver).
+
+    Raises:
+        ValidationError: If ``layer_name`` is blank or a row count is negative.
+    """
+    require(len(layer_name) >= 1, "layer_name must be a non-empty string")
+    require(rows_in >= 0, "rows_in must be non-negative")
+    require(rows_out >= 0, "rows_out must be non-negative")
+
+    if audit_dt.height == 0 or _AFFECTED_ROWS not in audit_dt.columns:
+        matched_count = 0
+    else:
+        matched_count = int(audit_dt.get_column(_AFFECTED_ROWS).sum() or 0)
+
+    unmatched_count = max(rows_in - matched_count, 0)
+    matched = matched_count > 0
+    return LayerDiagnostics(
+        matched_count=matched_count,
+        unmatched_count=unmatched_count,
+        status="pass" if matched else "warn",
+        messages=(_MATCHED_MESSAGE if matched else _UNMATCHED_MESSAGE,),
+    )
