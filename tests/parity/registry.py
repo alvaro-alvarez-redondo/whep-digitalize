@@ -39,6 +39,11 @@ _STAGE_DEFINITIONS = "r/2-postpro_pipeline/21-postpro_utilities/21-stage-definit
 _SCHEMA_VALIDATION = "r/2-postpro_pipeline/23-postpro_rule_engine/23-schema-validation.R"
 _CONDITIONAL_GROUP = "r/2-postpro_pipeline/23-postpro_rule_engine/23-conditional-group.R"
 _FOOTNOTE_RULES = "r/2-postpro_pipeline/23-postpro_rule_engine/23-footnote-rules.R"
+# Data audit: config defines empty_audit_findings_dt (used by the validators), validation defines
+# the validators + master validation. Orchestration is not sourced — parse_double is called
+# directly in the preamble to capture the parser-vs-regex divergence.
+_AUDIT_CONFIG = "r/2-postpro_pipeline/20-data_audit/20-audit-config.R"
+_AUDIT_VALIDATION = "r/2-postpro_pipeline/20-data_audit/20-audit-validation.R"
 
 # Stage-level (run_import_pipeline) golden: the orchestration body is replicated inline over
 # the whole corpus (R's run_import_pipeline auto-sources via here::here + auto-runs, which the
@@ -271,6 +276,19 @@ _FOOTNOTE_RULES_PREAMBLE = (
     "column_target = mk(values$r_ct), value_target_raw = mk(values$r_vtr), "
     "value_target = mk(values$r_vt))\n"
     "res <- apply_footnote_rules(ds, rules, 'clean', 'whep', 'rules.xlsx', '2026-01-01T00:00:00Z')"
+)
+
+# data_audit: build a dataset from the fixture (value + document columns), run master validation
+# with an explicit audit map (character_non_empty on document, numeric_string on value), and parse
+# value via readr::parse_double. The fixture packs the parser-vs-regex divergence: "-3.5", "3.",
+# ".5", "1e5", "+3" are all FLAGGED by numeric_string yet PARSE fine; "bad"/""/"1,000" parse to NA.
+_DATA_AUDIT_PREAMBLE = (
+    "mk <- function(x) as.character(x)\n"
+    "dataset <- data.table::data.table(value = mk(values$value), document = mk(values$document))\n"
+    "audit_map <- list(character_non_empty = c('document'), numeric_string = c('value'))\n"
+    "mvres <- run_master_validation(dataset, audit_map)\n"
+    "findings <- data.table::as.data.table(mvres$findings)\n"
+    "parsed <- suppressWarnings(readr::parse_double(as.character(dataset$value)))"
 )
 
 CAPTURES: dict[str, CaptureSpec] = {
@@ -715,6 +733,31 @@ CAPTURES: dict[str, CaptureSpec] = {
             "(remove>replace, first-replacement), NA/empty/trailing-;/whitespace tokens, "
             "conditional target, transliteration, and no-op. Reconstructed footnotes, mutated "
             "target column, change count, changed_columns, and the full audit table must match R."
+        ),
+    ),
+    "data_audit": CaptureSpec(
+        module="data_audit",
+        r_sources=(_GENERAL_CONSTANTS, _ASSERTIONS, _AUDIT_CONFIG, _AUDIT_VALIDATION),
+        fixture="synthetic/data_audit_inputs.json",
+        preamble=_DATA_AUDIT_PREAMBLE,
+        exports={
+            # Findings table: plan order (character_non_empty on document, then numeric_string on
+            # value), 1-based row_index, and the verbatim audit type/message strings.
+            "findings_row_index": "findings$row_index",
+            "findings_audit_column": "findings$audit_column",
+            "findings_audit_type": "findings$audit_type",
+            "findings_audit_message": "findings$audit_message",
+            "invalid_row_index": "mvres$invalid_row_index",
+            # readr::parse_double output (as.character -> "1e+05" etc.); compared numerically.
+            "parsed_value": "parsed",
+        },
+        description=(
+            "Data audit (20-audit-validation.R + parse_double): master validation findings "
+            "(character_non_empty on document, numeric_string on value) with 1-based row indices "
+            "in plan order, the sorted-unique invalid_row_index, and the parsed value column. "
+            "Pins parity risk #8 — the audit regex ^[0-9]+(\\.[0-9]+)?$ flags negatives / "
+            "scientific / signed values yet parse_double still parses them; invalid rows are "
+            "retained in the audited output."
         ),
     ),
 }

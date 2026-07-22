@@ -1,0 +1,4 @@
+{
+  "value": ["10", "20.5", "bad", "-3.5", "", null, "3.", ".5", "1e5", "007", "0", "1,000", "+3", "  ", "12.34.56"],
+  "document": ["a.xlsx", "", "  ", null, "b.xlsx", "c.xlsx", "d.xlsx", "e.xlsx", "f.xlsx", "g.xlsx", "h.xlsx", "i.xlsx", "j.xlsx", "k.xlsx", "l.xlsx"]
+}

@@ -70,6 +70,10 @@ class Patterns:
     header_normalize_fast_path: str = r"^[a-z0-9](?:[a-z0-9/_-]*[a-z0-9])?$"
     year_column: str = r"^\d{4}(-\d{4})?$"
     yearbook_token_4digit: str = r"^\d{4}$"
+    # Audit numeric-string validator (20-audit-validation.R). Deliberately stricter than the
+    # float parser: rejects negatives / scientific / signs, so "-3.5" is flagged yet parses
+    # (parity risk #8).
+    audit_numeric_string: str = r"^[0-9]+(\.[0-9]+)?$"
     footnote_non_alnum: str = r"[^a-z0-9 ;/*().,#%:-]+"
     file_extension: str = r"\.[a-z0-9]+$"
 

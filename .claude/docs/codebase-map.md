@@ -83,10 +83,10 @@ Public: `runner.run_postpro_pipeline(raw, config, dataset_name=None, options=Non
 
 | Planned module | Functions to port | R source | Risk |
 |----------------|-------------------|----------|------|
-| `audit/audit.py` | `audit_data_output` (value→Float64; invalid rows retained) | `20-audit-orchestration.R` | MEDIUM |
-| `audit/validation.py` | non-empty + numeric-string validators, master validation | `20-audit-validation.R` | LOW |
-| `audit/config.py` | audit config + findings schema | `20-audit-config.R` | LOW |
-| `audit/export.py` | styled invalid-cell highlight (openpyxl) | `20-audit-export.R` | MEDIUM |
+| `audit/audit.py` **[done]** | `audit_data_output` (value→Float64; invalid rows retained), `AuditResult` | `20-audit-orchestration.R` | MEDIUM |
+| `audit/validation.py` **[done]** | non-empty + numeric-string validators, master validation | `20-audit-validation.R` | LOW |
+| `audit/config.py` **[done]** | audit config + findings schema | `20-audit-config.R` | LOW |
+| `audit/export.py` **[done]** | styled invalid-cell highlight (openpyxl) | `20-audit-export.R` | MEDIUM |
 | `utilities/stage_definitions.py` **[done]** | canonical rule columns, stage names + value columns | `21-stage-definitions.R` | LOW |
 | `utilities/output_roots.py` | resolve/create audit subtree | `21-output-roots.R` | LOW |
 | `utilities/diagnostics.py` | `build_layer_diagnostics` → `LayerDiagnostics` | `21-diagnostics.R` | LOW |

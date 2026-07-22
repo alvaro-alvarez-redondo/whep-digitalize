@@ -43,6 +43,11 @@ def test_pinned_scalar_values() -> None:
     assert constants.defaults.notes_value is None
 
 
+def test_audit_numeric_string_pattern() -> None:
+    # The stricter-than-parser audit regex (parity risk #8): no negatives / scientific / signs.
+    assert get_pipeline_constants().patterns.audit_numeric_string == r"^[0-9]+(\.[0-9]+)?$"
+
+
 def test_canonical_rule_columns() -> None:
     constants = get_pipeline_constants()
     assert constants.postpro.canonical_rule_columns == (
