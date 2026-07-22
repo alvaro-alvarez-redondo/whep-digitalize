@@ -98,7 +98,7 @@ Public: `runner.run_postpro_pipeline(raw, config, dataset_name=None, options=Non
 | `rule_engine/matching_strategy.py` **[done]** | key encode/decode, strategy config | `23-matching-strategy.R` | MEDIUM |
 | `rule_engine/matching_values.py` **[done]** | tokenized match, concat merge, change count | `23-matching-values.R` | **HIGH** |
 | `rule_engine/target_apply.py` **[done]** | `last_rule_wins` + overwrite events, `concatenate` | `23-target-apply.R` | **HIGH** |
-| `rule_engine/conditional_group.py` | keyed cartesian join, source+target scatter, audit | `23-conditional-group.R` | **HIGH** |
+| `rule_engine/conditional_group.py` **[done]** | keyed cartesian join, source+target scatter, audit | `23-conditional-group.R` | **HIGH** |
 | `rule_engine/footnote_rules.py` | explode→match→resolve→reconstruct | `23-footnote-rules.R` | **HIGH** (top) |
 | `rule_engine/schema_validation.py` **[done]** | coerce/validate rules, conditional dictionary | `23-schema-validation.R` | MED-HIGH |
 | `rule_engine/payload_application.py` | `apply_rule_payload`, execution plan | `23-payload-application.R` | LOW-MED |

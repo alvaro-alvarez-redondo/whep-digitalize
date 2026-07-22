@@ -394,6 +394,39 @@ Ported `23-schema-validation.R` plus its small unported dependency `21-stage-def
 unit + 6 parity). Next on the critical path: `rule_engine/conditional_group.py` and
 `rule_engine/footnote_rules.py`, then `payload_application.py` wires them together.
 
+## Phase 2 — postpro rule engine: conditional_group — ✅ (2026-07-22)
+
+`rule_engine/conditional_group.py` (`23-conditional-group.R`, `apply_conditional_rule_group` +
+`prepare_conditional_rule_group`) — the source→target group applicator that drives
+`apply_target_updates_with_strategy`:
+
+- **Cartesian keyed join:** each dataset row is left-joined to the group's rules on the encoded
+  `source_key` (multi-match fans out). data.table's Y-then-X row order (dataset row, then rule
+  order) is reproduced by an explicit `(row_id, __rule_order__)` sort — the source/target
+  last-rule-wins reductions depend on it.
+- **Target-condition match** on the matched subset (reuses `match_rule_target_condition_values`);
+  `matched_row_mask = source_matched & target_condition`. Computing the condition over every
+  joined row then AND-ing is equivalent to R's matched-subset computation.
+- **Source rewrite** (functional scatter, last-rule-wins per row; change count over the
+  un-deduplicated before/after vectors, matching R) then **target update** via
+  `apply_target_updates_with_strategy` (`apply_condition_match=False`, `order_columns=["row_id"]`).
+- **Encoded-NA audit join-back:** group audited rows by `(source_key, target_key,
+  value_source_result, value_target_result_encoded)`, join back to the keyed rules, order by
+  `(column_source, column_target, value_source_raw, value_target_raw)`.
+- **Independent `changed_columns`** (parity focus): a group whose only effect was a source rewrite
+  marks the **source** column, not the target. Returns `ConditionalGroupResult` (functional; R
+  mutated the frame in place — risk #10).
+- **Parity:** new `conditional_group` `CaptureSpec` + 4-scenario fixture (M: 2 rules over 4 rows
+  incl. a `"Café"→"COFFEE"` transliteration match + audit grouping/affected-rows; SO: source-only;
+  TO: target-only; NM: no-match). 31 goldens; `tests/parity/test_conditional_group_parity.py`
+  matches R byte-for-byte (mutated columns, `changed_value_count`, `changed_columns`, full audit
+  frame). Unit suite `tests/postpro/test_conditional_group.py`.
+
+**Gates:** ruff + ruff-format clean · mypy strict clean (92 files) · **391 tests pass** (+18: 13
+unit + 5 parity). Rule engine: 5 of 7 modules done. Next: `rule_engine/footnote_rules.py` (the
+explode→match→resolve→reconstruct — the hardest single port), then `payload_application.py` wires
+footnote rules + conditional groups per rule file.
+
 ## Baseline metrics (autocode)
 
 | metric | value |

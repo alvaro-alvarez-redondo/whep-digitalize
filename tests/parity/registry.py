@@ -37,6 +37,7 @@ _MATCHING_VALUES = "r/2-postpro_pipeline/23-postpro_rule_engine/23-matching-valu
 _TARGET_APPLY = "r/2-postpro_pipeline/23-postpro_rule_engine/23-target-apply.R"
 _STAGE_DEFINITIONS = "r/2-postpro_pipeline/21-postpro_utilities/21-stage-definitions.R"
 _SCHEMA_VALIDATION = "r/2-postpro_pipeline/23-postpro_rule_engine/23-schema-validation.R"
+_CONDITIONAL_GROUP = "r/2-postpro_pipeline/23-postpro_rule_engine/23-conditional-group.R"
 
 # Stage-level (run_import_pipeline) golden: the orchestration body is replicated inline over
 # the whole corpus (R's run_import_pipeline auto-sources via here::here + auto-runs, which the
@@ -221,6 +222,40 @@ _SCHEMA_VALIDATION_PREAMBLE = (
     "values$mc_vt)\n"
     "aborts <- function(r) as.character(inherits(try(validate_canonical_rules("
     "r, dataset, 'rules.xlsx', 'clean'), silent = TRUE), 'try-error'))"
+)
+
+# conditional_group: four scenarios for apply_conditional_rule_group. Each builds a fresh
+# data.table dataset (mutated by reference) and a coerced-form rule group (with the
+# source_value_column_present flag), then runs the function. M: two rules over four rows incl. a
+# transliteration match ("Café" via "cafe"), exercising audit grouping + affected-row counts +
+# (source, target) both changing. SO: a source rewrite whose target update is a no-op — must mark
+# only the source column. TO: no source-result value (flag FALSE) — target-only. NM: no match.
+# Unicode lives in the fixture; the preamble stays ASCII.
+_CONDITIONAL_GROUP_PREAMBLE = (
+    "mk <- function(x) as.character(x)\n"
+    "mkgroup <- function(cs, vsr, vs, ct, vtr, vt, svc) data.table::data.table("
+    "column_source = mk(cs), value_source_raw = mk(vsr), value_source = mk(vs), "
+    "column_target = mk(ct), value_target_raw = mk(vtr), value_target = mk(vt), "
+    "source_value_column_present = as.logical(mk(svc)))\n"
+    "run <- function(ds, g) apply_conditional_rule_group(ds, group_rules = g, "
+    "stage_name = 'clean', dataset_name = 'whep', rule_file_id = 'rules.xlsx', "
+    "execution_timestamp_utc = '2026-01-01T00:00:00Z')\n"
+    "dsM <- data.table::data.table(commodity = mk(values$M_ds_commodity), "
+    "unit = mk(values$M_ds_unit))\n"
+    "resM <- run(dsM, mkgroup(values$M_r_cs, values$M_r_vsr, values$M_r_vs, values$M_r_ct, "
+    "values$M_r_vtr, values$M_r_vt, values$M_r_svc))\n"
+    "dsS <- data.table::data.table(commodity = mk(values$SO_ds_commodity), "
+    "unit = mk(values$SO_ds_unit))\n"
+    "resS <- run(dsS, mkgroup(values$SO_r_cs, values$SO_r_vsr, values$SO_r_vs, values$SO_r_ct, "
+    "values$SO_r_vtr, values$SO_r_vt, values$SO_r_svc))\n"
+    "dsT <- data.table::data.table(commodity = mk(values$TO_ds_commodity), "
+    "unit = mk(values$TO_ds_unit))\n"
+    "resT <- run(dsT, mkgroup(values$TO_r_cs, values$TO_r_vsr, values$TO_r_vs, values$TO_r_ct, "
+    "values$TO_r_vtr, values$TO_r_vt, values$TO_r_svc))\n"
+    "dsN <- data.table::data.table(commodity = mk(values$NM_ds_commodity), "
+    "unit = mk(values$NM_ds_unit))\n"
+    "resN <- run(dsN, mkgroup(values$NM_r_cs, values$NM_r_vsr, values$NM_r_vs, values$NM_r_ct, "
+    "values$NM_r_vtr, values$NM_r_vt, values$NM_r_svc))"
 )
 
 CAPTURES: dict[str, CaptureSpec] = {
@@ -571,6 +606,60 @@ CAPTURES: dict[str, CaptureSpec] = {
             "build_conditional_rule_dictionary grouping by (column_source, column_target) with "
             "radix/code-point + NA-last within-group order (parity risk #7); and "
             "validate_canonical_rules duplicate-key / missing-column aborts."
+        ),
+    ),
+    "conditional_group": CaptureSpec(
+        module="conditional_group",
+        r_sources=(
+            _GENERAL_CONSTANTS,
+            _STRING_NORMALIZATION,
+            _STAGE_DEFINITIONS,
+            _MATCHING_STRATEGY,
+            _MATCHING_VALUES,
+            _TARGET_APPLY,
+            _CONDITIONAL_GROUP,
+        ),
+        fixture="synthetic/conditional_group_inputs.json",
+        preamble=_CONDITIONAL_GROUP_PREAMBLE,
+        exports={
+            "M_commodity": "resM$data$commodity",
+            "M_unit": "resM$data$unit",
+            "M_changed": "resM$changed_value_count",
+            "M_changed_columns": "resM$changed_columns",
+            "M_audit_nrow": "as.character(nrow(resM$audit))",
+            "M_audit_column_source": "resM$audit$column_source",
+            "M_audit_value_source_raw": "resM$audit$value_source_raw",
+            "M_audit_value_source_result": "resM$audit$value_source_result",
+            "M_audit_column_target": "resM$audit$column_target",
+            "M_audit_value_target_raw": "resM$audit$value_target_raw",
+            "M_audit_value_target_result": "resM$audit$value_target_result",
+            "M_audit_affected_rows": "resM$audit$affected_rows",
+            "M_audit_dataset_name": "resM$audit$dataset_name",
+            "M_audit_execution_stage": "resM$audit$execution_stage",
+            "M_audit_rule_file_identifier": "resM$audit$rule_file_identifier",
+            "M_audit_execution_timestamp_utc": "resM$audit$execution_timestamp_utc",
+            "SO_commodity": "resS$data$commodity",
+            "SO_unit": "resS$data$unit",
+            "SO_changed": "resS$changed_value_count",
+            "SO_changed_columns": "resS$changed_columns",
+            "SO_audit_nrow": "as.character(nrow(resS$audit))",
+            "TO_commodity": "resT$data$commodity",
+            "TO_unit": "resT$data$unit",
+            "TO_changed": "resT$changed_value_count",
+            "TO_changed_columns": "resT$changed_columns",
+            "TO_audit_nrow": "as.character(nrow(resT$audit))",
+            "NM_commodity": "resN$data$commodity",
+            "NM_unit": "resN$data$unit",
+            "NM_changed": "resN$changed_value_count",
+            "NM_changed_columns": "resN$changed_columns",
+            "NM_audit_nrow": "as.character(nrow(resN$audit))",
+        },
+        description=(
+            "apply_conditional_rule_group (23-conditional-group.R): cartesian source-key join, "
+            "target-condition match on the matched subset, functional source + target scatter, and "
+            "the encoded-NA audit join-back. Covers audit grouping/affected-rows + transliteration "
+            "match (M), source-only rewrite marking only the source column (SO), target-only (TO), "
+            "and no-match (NM). Mutated columns, count, changed_columns, and audit must match."
         ),
     ),
 }
