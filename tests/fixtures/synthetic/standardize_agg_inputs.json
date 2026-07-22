@@ -1,0 +1,21 @@
+{
+  "agg_commodity": ["wheat", "wheat", "rice", "corn", "corn", "oat", "oat"],
+  "agg_unit": ["kg", "kg", "kg", "kg", "kg", "kg", "kg"],
+  "agg_value": ["10", "20", "5", null, "7", null, null],
+
+  "r_commodity": ["wheat", "all commodity"],
+  "r_source": ["kg", "kg"],
+  "r_target": ["g", "g"],
+  "r_factor": ["1000", "1000"],
+  "r_offset": ["0", "0"],
+  "r_sheet": ["standardize_unit", "standardize_unit"],
+  "r_file": ["standardize_units_rules.xlsx", "standardize_units_rules.xlsx"],
+
+  "m_rule": ["wheat", "all commodity", "all commodity"],
+  "m_applied": ["wheat", "corn", "rice"],
+  "m_unitkey": ["kg", "kg", "kg"],
+  "m_affected": ["1", "1", "1"],
+  "m_raw": ["kg", "kg", "kg"],
+  "m_prefix": ["1", "1", "1"],
+  "m_eff": ["1000", "1000", "1000"]
+}

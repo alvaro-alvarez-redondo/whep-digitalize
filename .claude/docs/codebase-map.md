@@ -104,8 +104,8 @@ Public: `runner.run_postpro_pipeline(raw, config, dataset_name=None, options=Non
 | `rule_engine/payload_application.py` **[done]** | `apply_rule_payload`, execution plan | `23-payload-application.R` | LOW-MED |
 | `standardize_units/engine.py` **[done]** | `apply_standardize_rules` (fold, 2-stage, affine), `StandardizeResult` | `24-standardize-engine.R` | **HIGH** |
 | `standardize_units/rules_setup.py` **[done]** | aliasing, validation, `prepare_standardize_rules` (xlsx readers → C4) | `24-rules-setup.R` | MEDIUM |
-| `standardize_units/aggregation.py` | duplicate-group sum (all-NA→NA) | `24-standardize-aggregation.R` | MEDIUM |
-| `standardize_units/orchestration.py` | `run_standardize_units_layer_batch` + audit | `24-standardize-orchestration.R` | MEDIUM |
+| `standardize_units/aggregation.py` **[done]** | duplicate-group sum (all-NA→NA), idempotent | `24-standardize-aggregation.R` | MEDIUM |
+| `standardize_units/orchestration.py` **[done]** | `run_standardize_units_layer_batch` + rule readers + audit, `StandardizeLayerResult` | `24-standardize-orchestration.R` | MEDIUM |
 | `diagnostics/preflight.py` | `collect_postpro_preflight`, `assert_postpro_preflight` | `25-preflight.R` | LOW |
 | `diagnostics/output.py` | `persist_postpro_audit`, overwrite subset | `25-diagnostics-output.R` | MEDIUM |
 | `diagnostics/rule_summaries.py` | clean/harmonize matched + unmatched summaries | `25-rule-summaries.R` | LOW-MED |
