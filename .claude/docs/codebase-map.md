@@ -92,16 +92,16 @@ Public: `runner.run_postpro_pipeline(raw, config, dataset_name=None, options=Non
 | `utilities/diagnostics.py` **[done]** | `build_layer_diagnostics` → `LayerDiagnostics` | `21-diagnostics.R` | LOW |
 | `utilities/templates.py` **[done]** | rule templates; `read_rule_table` (all-text; sheet match), payload discovery | `21-template-rules.R` | MEDIUM |
 | `utilities/payload_cache.py` **[done]** | 2-level payload cache (off by default; pickle disk) | `21-runtime-cache.R` | MEDIUM |
-| `clean_harmonize/layer_runner.py` | `run_rule_stage_layer_batch` (multi-pass driver) | `22-layer-runner.R` | **HIGH** |
-| `clean_harmonize/controls_cache.py` | controls + cycle detection (hash, not serialize) | `22-controls-cache.R` | **HIGH** |
-| `clean_harmonize/stage_inputs.py` | `;`-token canonicalization; drop empty footnotes | `22-stage-inputs.R` | MEDIUM |
+| `clean_harmonize/layer_runner.py` **[done]** | `run_rule_stage_layer_batch` (multi-pass driver), `StageLayerResult` | `22-layer-runner.R` | **HIGH** |
+| `clean_harmonize/controls_cache.py` **[done]** | controls + cycle detection (hash, not serialize) | `22-controls-cache.R` | **HIGH** |
+| `clean_harmonize/stage_inputs.py` **[done]** | `;`-token canonicalization; drop empty footnotes | `22-stage-inputs.R` | MEDIUM |
 | `rule_engine/matching_strategy.py` **[done]** | key encode/decode, strategy config | `23-matching-strategy.R` | MEDIUM |
 | `rule_engine/matching_values.py` **[done]** | tokenized match, concat merge, change count | `23-matching-values.R` | **HIGH** |
 | `rule_engine/target_apply.py` **[done]** | `last_rule_wins` + overwrite events, `concatenate` | `23-target-apply.R` | **HIGH** |
 | `rule_engine/conditional_group.py` **[done]** | keyed cartesian join, source+target scatter, audit | `23-conditional-group.R` | **HIGH** |
 | `rule_engine/footnote_rules.py` **[done]** | explode→match→resolve→reconstruct | `23-footnote-rules.R` | **HIGH** (top) |
 | `rule_engine/schema_validation.py` **[done]** | coerce/validate rules, conditional dictionary | `23-schema-validation.R` | MED-HIGH |
-| `rule_engine/payload_application.py` | `apply_rule_payload`, execution plan | `23-payload-application.R` | LOW-MED |
+| `rule_engine/payload_application.py` **[done]** | `apply_rule_payload`, execution plan | `23-payload-application.R` | LOW-MED |
 | `standardize_units/engine.py` | `apply_standardize_rules` (fold, 2-stage, affine) | `24-standardize-engine.R` | **HIGH** |
 | `standardize_units/rules_setup.py` | rule load, aliasing, chained-rule guard | `24-rules-setup.R` | MEDIUM |
 | `standardize_units/aggregation.py` | duplicate-group sum (all-NA→NA) | `24-standardize-aggregation.R` | MEDIUM |

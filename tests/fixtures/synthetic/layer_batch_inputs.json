@@ -1,0 +1,17 @@
+{
+  "commodity": [
+    "wheat",
+    "rice",
+    "maize"
+  ],
+  "unit": [
+    "t",
+    "kg",
+    "t"
+  ],
+  "value": [
+    "1",
+    "2",
+    "3"
+  ]
+}

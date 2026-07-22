@@ -533,6 +533,41 @@ rule-engine multi-pass session (B6).
 on every run (never green) — all merges land on local gates only. Flagged as a background task to
 fix the workflow.
 
+## Phase 2 — postpro multi-pass driver (B6): payload_application + clean_harmonize — ✅ (2026-07-23)
+
+`rule_engine/payload_application.py` (`23-payload-application.R`) + `clean_harmonize/*` (`22-*`) —
+the Stage-2 critical path. Unblocked by C2 (payload loaders). **Rule engine now complete (7/7).**
+
+- **`payload_application.py`** — `prepare_rule_payload_execution_plan` (split footnote-source vs
+  standard rules; `build_conditional_rule_dictionary` for group order) + `apply_rule_payload`
+  (footnote rules first, then each conditional group in order; accumulate audit / overwrite /
+  change count / changed_columns; `trigger_columns` gate). Composes the B4/B5 appliers.
+- **`clean_harmonize/stage_inputs.py`** — post-loop `;`-cell canonicalization of `notes`/
+  `footnotes` (split → trim → drop-empty → dedupe → radix-sort; blank→null; per-distinct-value
+  memoized) and drop of an all-null `footnotes` column.
+- **`clean_harmonize/controls_cache.py`** — `resolve_stage_multi_pass_controls` (from constants)
+  + **cycle detection** replacing R `serialize()` with a deterministic content hash (parity
+  risk #6): `df.hash_rows()` folded via blake2b, screened by a cheap fingerprint (row count +
+  per-column dtype/null/byte-length). The off-by-default schema-validation memoization cache is
+  intentionally not ported (no output impact).
+- **`clean_harmonize/layer_runner.py`** — `run_rule_stage_layer_batch` (+ `run_cleaning_` /
+  `run_harmonize_layer_batch`) → typed `StageLayerResult` (R used data.table attributes). Loads
+  payloads (C2), validates each once, then loops passes (max 10): apply all payloads, stop on
+  `changed_value_count==0` (converged) / repeated state (cycle → warn|abort) / max passes.
+  Match-key normalization on pass 1 only. Post-loop canonicalize + drop-empty-footnotes.
+- **Parity:** new `layer_batch` `CaptureSpec` + committed rule workbooks
+  (`fixtures/rule_files/{clean,harmonize}/*.xlsx`) + dataset fixture; the R capture builds an
+  inline config pointing at them (cache disabled) and runs both stages. `test_layer_batch_parity`
+  matches R on converged data, `stop_reason`, `passes_executed`, `converged`, `matched_count`
+  (each stage converges in 2 passes). Also a `utilities`-style `apply_rule_payload` path is
+  covered by unit tests. Unit suite `tests/postpro/test_clean_harmonize.py` (incl. cycle-detection
+  via oscillating rules → warn, and pass-1 normalization / drop-footnotes).
+
+**Gates:** ruff + ruff-format + mypy strict clean (113 files) · **483 tests pass** (+16: 14 unit +
+2 parity). **Rule engine 7/7 done; clean_harmonize done.** E1 (postpro 9-step runner) now needs
+only Track C's C4 (standardize agg + orchestration) and C5 (diagnostics), plus C3 (standardize
+core). Remaining before E1: **C3 → C4**, **C5**.
+
 ## Baseline metrics (autocode)
 
 | metric | value |
