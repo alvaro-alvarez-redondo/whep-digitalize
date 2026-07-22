@@ -88,10 +88,10 @@ Public: `runner.run_postpro_pipeline(raw, config, dataset_name=None, options=Non
 | `audit/config.py` **[done]** | audit config + findings schema | `20-audit-config.R` | LOW |
 | `audit/export.py` **[done]** | styled invalid-cell highlight (openpyxl) | `20-audit-export.R` | MEDIUM |
 | `utilities/stage_definitions.py` **[done]** | canonical rule columns, stage names + value columns | `21-stage-definitions.R` | LOW |
-| `utilities/output_roots.py` | resolve/create audit subtree | `21-output-roots.R` | LOW |
-| `utilities/diagnostics.py` | `build_layer_diagnostics` → `LayerDiagnostics` | `21-diagnostics.R` | LOW |
-| `utilities/templates.py` | rule templates; `read_rule_table` (all-text; sheet match) | `21-template-rules.R` | MEDIUM |
-| `utilities/payload_cache.py` | 2-level payload cache (off by default) | `21-runtime-cache.R` | MEDIUM |
+| `utilities/output_roots.py` **[done]** | resolve/create audit subtree, `PostproOutputPaths` | `21-output-roots.R` | LOW |
+| `utilities/diagnostics.py` **[done]** | `build_layer_diagnostics` → `LayerDiagnostics` | `21-diagnostics.R` | LOW |
+| `utilities/templates.py` **[done]** | rule templates; `read_rule_table` (all-text; sheet match), payload discovery | `21-template-rules.R` | MEDIUM |
+| `utilities/payload_cache.py` **[done]** | 2-level payload cache (off by default; pickle disk) | `21-runtime-cache.R` | MEDIUM |
 | `clean_harmonize/layer_runner.py` | `run_rule_stage_layer_batch` (multi-pass driver) | `22-layer-runner.R` | **HIGH** |
 | `clean_harmonize/controls_cache.py` | controls + cycle detection (hash, not serialize) | `22-controls-cache.R` | **HIGH** |
 | `clean_harmonize/stage_inputs.py` | `;`-token canonicalization; drop empty footnotes | `22-stage-inputs.R` | MEDIUM |

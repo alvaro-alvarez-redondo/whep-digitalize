@@ -44,6 +44,10 @@ _FOOTNOTE_RULES = "r/2-postpro_pipeline/23-postpro_rule_engine/23-footnote-rules
 # directly in the preamble to capture the parser-vs-regex divergence.
 _AUDIT_CONFIG = "r/2-postpro_pipeline/20-data_audit/20-audit-config.R"
 _AUDIT_VALIDATION = "r/2-postpro_pipeline/20-data_audit/20-audit-validation.R"
+# Postpro utilities: diagnostics (build_layer_diagnostics) + template rules (read_rule_table with
+# the sheet schema-matching heuristic; needs get_canonical_rule_columns from stage-definitions).
+_AUDIT_DIAGNOSTICS = "r/2-postpro_pipeline/21-postpro_utilities/21-diagnostics.R"
+_TEMPLATE_RULES = "r/2-postpro_pipeline/21-postpro_utilities/21-template-rules.R"
 
 # Stage-level (run_import_pipeline) golden: the orchestration body is replicated inline over
 # the whole corpus (R's run_import_pipeline auto-sources via here::here + auto-runs, which the
@@ -289,6 +293,17 @@ _DATA_AUDIT_PREAMBLE = (
     "mvres <- run_master_validation(dataset, audit_map)\n"
     "findings <- data.table::as.data.table(mvres$findings)\n"
     "parsed <- suppressWarnings(readr::parse_double(as.character(dataset$value)))"
+)
+
+# utilities: read_rule_table over the committed xlsx rule fixture (prefix strip + sheet
+# schema-matching heuristic + all-as-text: "007"/"1000.0" stay strings), plus
+# build_layer_diagnostics for a matched (affected_rows sum > 0) and an empty (warn) audit table.
+_UTILITIES_PREAMBLE = (
+    "rules <- read_rule_table(file.path(fixtures_dir, 'synthetic/clean_rules_sample.xlsx'))\n"
+    "audit_matched <- data.table::data.table(affected_rows = c(2L, 3L))\n"
+    "audit_empty <- data.table::data.table(affected_rows = integer(0))\n"
+    "diag_matched <- build_layer_diagnostics('clean', 10L, 10L, audit_matched)\n"
+    "diag_empty <- build_layer_diagnostics('clean', 5L, 5L, audit_empty)"
 )
 
 CAPTURES: dict[str, CaptureSpec] = {
@@ -758,6 +773,39 @@ CAPTURES: dict[str, CaptureSpec] = {
             "Pins parity risk #8 — the audit regex ^[0-9]+(\\.[0-9]+)?$ flags negatives / "
             "scientific / signed values yet parse_double still parses them; invalid rows are "
             "retained in the audited output."
+        ),
+    ),
+    "utilities": CaptureSpec(
+        module="utilities",
+        r_sources=(_GENERAL_CONSTANTS, _STAGE_DEFINITIONS, _AUDIT_DIAGNOSTICS, _TEMPLATE_RULES),
+        preamble=_UTILITIES_PREAMBLE,
+        exports={
+            # read_rule_table: normalized (prefix-stripped) columns + all-as-text values (the
+            # matching clean_rules sheet only; the guidance sheet is skipped by the heuristic).
+            "rr_columns": "colnames(rules)",
+            "rr_nrow": "as.character(nrow(rules))",
+            "rr_column_source": "rules$column_source",
+            "rr_value_source_raw": "rules$value_source_raw",
+            "rr_value_source": "rules$value_source",
+            "rr_column_target": "rules$column_target",
+            "rr_value_target_raw": "rules$value_target_raw",
+            "rr_value_target": "rules$value_target",
+            # build_layer_diagnostics: deterministic fields (the wall-clock timestamp is dropped).
+            "diag_matched_matched_count": "as.character(diag_matched$matched_count)",
+            "diag_matched_unmatched_count": "as.character(diag_matched$unmatched_count)",
+            "diag_matched_status": "diag_matched$status",
+            "diag_matched_messages": "diag_matched$messages",
+            "diag_empty_matched_count": "as.character(diag_empty$matched_count)",
+            "diag_empty_unmatched_count": "as.character(diag_empty$unmatched_count)",
+            "diag_empty_status": "diag_empty$status",
+            "diag_empty_messages": "diag_empty$messages",
+        },
+        description=(
+            "Postpro utilities (21-template-rules.R + 21-diagnostics.R): read_rule_table over a "
+            "committed xlsx rule fixture — clean_/harmonize_ prefix strip, the sheet "
+            "schema-matching heuristic (guidance sheet skipped), and all-as-text reads keeping "
+            "'007'/'1000.0' as strings; plus build_layer_diagnostics matched/unmatched counts, "
+            "status, and message for a matched and an empty audit table."
         ),
     ),
 }

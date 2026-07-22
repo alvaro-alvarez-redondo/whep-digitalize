@@ -493,6 +493,46 @@ unit + 2 parity). **Postpro Track C started** — audit done; standardize_units,
 utilities, and `clean_harmonize/` (multi-pass driver) remain, plus rule-engine
 `payload_application.py` and export (Stage 3).
 
+## Phase 2 — postpro non-engine (Track C): utilities — ✅ (2026-07-22)
+
+`postpro/utilities/*` (`21-*`, C2) — the four non-`stage_definitions` utilities. Prereq for the
+rule-engine multi-pass session (B6).
+
+- **`output_roots.py`** — `get_postpro_output_paths` / `initialize_postpro_output_root` →
+  typed `PostproOutputPaths` (audit / diagnostics / templates / runtime_cache), created via the
+  shared `ensure_directories_exist`. R's `%||%` per-dir fallback is unnecessary (the typed Config
+  always resolves them).
+- **`diagnostics.py`** — `build_layer_diagnostics` → `LayerDiagnostics`: `matched_count` =
+  Σ`affected_rows` (0 when empty / column absent, mirroring R `sum(NULL)`), `unmatched_count` =
+  `max(rows_in − matched, 0)`, pass/warn status + message. The non-deterministic wall-clock
+  timestamp and the write-only `layer_name`/`rows_out` are dropped from the reduced contract
+  (`rows_out`/`layer_name` validated for interface parity).
+- **`templates.py`** — **`read_rule_table`** (the focus): all-as-text reads (calamine
+  `infer_schema_length=0` / `pl.read_csv` no-infer) so `"007"`/`"1000.0"` keep their source
+  string; the xlsx **sheet schema-matching heuristic** (strip `clean_`/`harmonize_` prefix → keep
+  sheets with no duplicate/unexpected columns and all required present → row-bind; abort if none).
+  Plus `write_stage_rule_template`/`generate_postpro_rule_templates` (openpyxl 2-sheet template)
+  and `discover_stage_rule_files`/`load_stage_rule_payloads` (deterministic prefix discovery).
+- **`payload_cache.py`** — 2-level (memory `dict` + pickle disk) rule-payload cache keyed by an
+  **md5 fingerprint of the ordered rule files** (`build_stage_payload_cache_key`), deterministic
+  prune (lowest sorted keys), `get_cached_stage_payload_bundle` (memory→disk→build+persist).
+  **Off by default**; disk uses pickle (the `saveRDS` analogue — parquet can't hold the nested
+  bundle). R's auto-enable-when-`runtime_cache_dir`-set is intentionally not reproduced.
+- **Parity:** new `utilities` `CaptureSpec` + committed xlsx fixture `clean_rules_sample.xlsx`
+  (matching `clean_rules` sheet with numeric-looking codes + a skipped `guidance` sheet). 16
+  goldens; `tests/parity/test_utilities_parity.py` matches R on `read_rule_table` (columns/values,
+  all-as-text) and `build_layer_diagnostics` (matched + empty). Unit suite
+  `tests/postpro/test_utilities.py`.
+
+**Gates:** ruff + ruff-format + mypy strict clean (107 files) · **467 tests pass** (+24: 22 unit +
+2 parity). **Track C: audit + utilities done.** Remaining Track C: `clean_harmonize/`
+(multi-pass), `standardize_units/`, `diagnostics/`; plus rule-engine `payload_application.py`
+(B6, now unblocked by C2) and export (Stage 3).
+
+**CI note:** the repo's GitHub Actions `quality` workflow hangs to the 6h timeout and is cancelled
+on every run (never green) — all merges land on local gates only. Flagged as a background task to
+fix the workflow.
+
 ## Baseline metrics (autocode)
 
 | metric | value |
