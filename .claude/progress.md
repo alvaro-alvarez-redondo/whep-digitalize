@@ -427,6 +427,39 @@ unit + 5 parity). Rule engine: 5 of 7 modules done. Next: `rule_engine/footnote_
 explode→match→resolve→reconstruct — the hardest single port), then `payload_application.py` wires
 footnote rules + conditional groups per rule file.
 
+## Phase 2 — postpro rule engine: footnote_rules — ✅ (2026-07-22)
+
+`rule_engine/footnote_rules.py` (`23-footnote-rules.R`, `apply_footnote_rules`) — the top-risk
+module: the `;`-explode / rule-match / resolve / reconstruct engine for footnote-sourced rules.
+
+- **R `strsplit` semantics reproduced exactly** (verified by an R probe): `NA` → one `NA` token,
+  `""` → zero tokens, and a **single trailing empty field is dropped** (`"a;"`→`["a"]`,
+  `";;"`→`["","" ]`) while leading/internal empties are kept. Exploded via a Python row loop
+  (`_r_strsplit`) since polars `str.split` keeps trailing empties and can't express this.
+- **Cartesian join** of each footnote token to the rules on the source key; Y-then-X order
+  reproduced via a `(row_id, footnote_index, __rule_order__)` sort.
+- **Conditional-target gating:** for rules targeting a data column with a condition, the match is
+  kept only when the current target value satisfies it (per-column normalization mirrors R).
+- **Precedence resolution** per `(row_id, footnote_index)`: **remove > replace > original**, with
+  the first replacement (join order) winning; reconstruct in `footnote_index` order (`;`-joined,
+  `NA` tokens dropped, all-`NA`/empty rows → `NA`).
+- **Target updates** via `apply_target_updates_with_strategy` (per target column,
+  `order_columns=["row_id","footnote_index"]`).
+- **Footnote change count** vs a snapshot before-image (functional — no in-place aliasing, so no
+  deep-copy needed); `changed_columns` marks `"footnotes"` only when the text actually changed.
+- **Audit** over matched, non-no-op token matches grouped by the 5 rule-value keys.
+- **Parity:** new `footnote_rules` `CaptureSpec` + one rich 12-row fixture (replace / remove /
+  multi-token / precedence / NA / `""` / trailing-`;` / whitespace / conditional-target /
+  transliteration / no-op). 17 goldens; `tests/parity/test_footnote_rules_parity.py` matches R
+  byte-for-byte (reconstructed footnotes, mutated target, change count, changed_columns, full
+  audit frame). Unit suite `tests/postpro/test_footnote_rules.py`.
+
+**Gates:** ruff + ruff-format clean · mypy strict clean (95 files) · **412 tests pass** (+21: 19
+unit + 2 parity). **Rule engine: 6 of 7 modules done** — only `payload_application.py` remains
+(the per-rule-file orchestration that splits footnote vs standard rules and applies footnote
+rules then each conditional group). After that: `clean_harmonize/` (multi-pass driver), audit,
+standardize_units, diagnostics, then export (Stage 3).
+
 ## Baseline metrics (autocode)
 
 | metric | value |

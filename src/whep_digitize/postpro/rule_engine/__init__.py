@@ -16,7 +16,7 @@ Status (risk):
   group-last) with overwrite-event emission, and ``concatenate``. (HIGH)
 * ``conditional_group.py`` <- ``23-conditional-group.R`` — **[done]** cartesian keyed join on
   ``source_key``, subset target-condition match, source+target scatter, audit. (HIGH)
-* ``footnote_rules.py`` <- ``23-footnote-rules.R`` — explode ``;`` tokens -> match ->
+* ``footnote_rules.py`` <- ``23-footnote-rules.R`` — **[done]** explode ``;`` tokens -> match ->
   resolve (remove > replace > original) -> reconstruct. The hardest single port. (HIGH)
 * ``schema_validation.py`` <- ``23-schema-validation.R`` — **[done]** coerce/validate rules,
   duplicate/conflict checks, radix-ordered conditional dictionary. (MEDIUM-HIGH)

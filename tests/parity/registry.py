@@ -38,6 +38,7 @@ _TARGET_APPLY = "r/2-postpro_pipeline/23-postpro_rule_engine/23-target-apply.R"
 _STAGE_DEFINITIONS = "r/2-postpro_pipeline/21-postpro_utilities/21-stage-definitions.R"
 _SCHEMA_VALIDATION = "r/2-postpro_pipeline/23-postpro_rule_engine/23-schema-validation.R"
 _CONDITIONAL_GROUP = "r/2-postpro_pipeline/23-postpro_rule_engine/23-conditional-group.R"
+_FOOTNOTE_RULES = "r/2-postpro_pipeline/23-postpro_rule_engine/23-footnote-rules.R"
 
 # Stage-level (run_import_pipeline) golden: the orchestration body is replicated inline over
 # the whole corpus (R's run_import_pipeline auto-sources via here::here + auto-runs, which the
@@ -256,6 +257,20 @@ _CONDITIONAL_GROUP_PREAMBLE = (
     "unit = mk(values$NM_ds_unit))\n"
     "resN <- run(dsN, mkgroup(values$NM_r_cs, values$NM_r_vsr, values$NM_r_vs, values$NM_r_ct, "
     "values$NM_r_vtr, values$NM_r_vt, values$NM_r_svc))"
+)
+
+# footnote_rules: one rich dataset + rule set exercising replace / remove / multi-token /
+# precedence (remove>replace, first-replacement) / NA / "" / trailing-";" / whitespace /
+# conditional-target / transliteration / no-op, applied at once. apply_footnote_rules mutates
+# the dataset in place; res$data is the mutated frame. Unicode lives in the fixture.
+_FOOTNOTE_RULES_PREAMBLE = (
+    "mk <- function(x) as.character(x)\n"
+    "ds <- data.table::data.table(footnotes = mk(values$ds_footnotes), unit = mk(values$ds_unit))\n"
+    "rules <- data.table::data.table(column_source = mk(values$r_cs), "
+    "value_source_raw = mk(values$r_vsr), value_source = mk(values$r_vs), "
+    "column_target = mk(values$r_ct), value_target_raw = mk(values$r_vtr), "
+    "value_target = mk(values$r_vt))\n"
+    "res <- apply_footnote_rules(ds, rules, 'clean', 'whep', 'rules.xlsx', '2026-01-01T00:00:00Z')"
 )
 
 CAPTURES: dict[str, CaptureSpec] = {
@@ -660,6 +675,46 @@ CAPTURES: dict[str, CaptureSpec] = {
             "the encoded-NA audit join-back. Covers audit grouping/affected-rows + transliteration "
             "match (M), source-only rewrite marking only the source column (SO), target-only (TO), "
             "and no-match (NM). Mutated columns, count, changed_columns, and audit must match."
+        ),
+    ),
+    "footnote_rules": CaptureSpec(
+        module="footnote_rules",
+        r_sources=(
+            _GENERAL_CONSTANTS,
+            _STRING_NORMALIZATION,
+            _STAGE_DEFINITIONS,
+            _MATCHING_STRATEGY,
+            _MATCHING_VALUES,
+            _TARGET_APPLY,
+            _FOOTNOTE_RULES,
+        ),
+        fixture="synthetic/footnote_rules_inputs.json",
+        preamble=_FOOTNOTE_RULES_PREAMBLE,
+        exports={
+            "footnotes": "res$data$footnotes",
+            "unit": "res$data$unit",
+            "changed": "res$changed_value_count",
+            "changed_columns": "res$changed_columns",
+            "overwrite_nrow": "as.character(nrow(res$overwrite_events))",
+            "audit_nrow": "as.character(nrow(res$audit))",
+            "audit_column_source": "res$audit$column_source",
+            "audit_value_source_raw": "res$audit$value_source_raw",
+            "audit_value_source_result": "res$audit$value_source_result",
+            "audit_column_target": "res$audit$column_target",
+            "audit_value_target_raw": "res$audit$value_target_raw",
+            "audit_value_target_result": "res$audit$value_target_result",
+            "audit_affected_rows": "res$audit$affected_rows",
+            "audit_dataset_name": "res$audit$dataset_name",
+            "audit_execution_stage": "res$audit$execution_stage",
+            "audit_rule_file_identifier": "res$audit$rule_file_identifier",
+            "audit_execution_timestamp_utc": "res$audit$execution_timestamp_utc",
+        },
+        description=(
+            "apply_footnote_rules (23-footnote-rules.R): the ;-explode / rule-match / reconstruct "
+            "engine. One rich dataset covering replace, remove, multi-token, precedence "
+            "(remove>replace, first-replacement), NA/empty/trailing-;/whitespace tokens, "
+            "conditional target, transliteration, and no-op. Reconstructed footnotes, mutated "
+            "target column, change count, changed_columns, and the full audit table must match R."
         ),
     ),
 }
