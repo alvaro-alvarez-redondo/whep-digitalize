@@ -460,6 +460,39 @@ unit + 2 parity). **Rule engine: 6 of 7 modules done** — only `payload_applica
 rules then each conditional group). After that: `clean_harmonize/` (multi-pass driver), audit,
 standardize_units, diagnostics, then export (Stage 3).
 
+## Phase 2 — postpro non-engine (Track C): data audit — ✅ (2026-07-22)
+
+`postpro/audit/` (`20-data_audit/`, all four files) — the data-audit stage. `audit_data_output`
+runs master validation, exports a highlighted invalid-row workbook, and parses `value` to
+`Float64`, returning a typed `AuditResult(audited, findings, invalid_row_index, report_path)`
+(R returned only the parsed frame + a side-effect file).
+
+- **Parity risk #8 reproduced exactly** — the audit regex `^[0-9]+(\.[0-9]+)?$`
+  (`audit_numeric_string`, added to `constants.Patterns`) is *stricter* than the float parser:
+  `-3.5`, `3.`, `.5`, `1e5`, `+3` are all **flagged as findings yet still parse** (verified both
+  engines agree numerically: polars `cast(Float64, strict=False)` == `readr::parse_double`).
+- **Invalid rows are kept** in the audited output (not dropped); `value` NAs for unparseable.
+- **Validators** (`validation.py`): `audit_character_non_empty` (null/blank-after-trim, `trimws`
+  class `[ \t\r\n]`) + `audit_numeric_string` (non-null & regex miss; NA skipped). 1-based
+  `row_index` (R `which`). Registry + plan + `run_master_validation` (unsupported → warn,
+  `selected_validations` filter, sorted-unique `invalid_row_index`), findings in plan order.
+- **Excel export** (`export.py`): first **openpyxl** use — `PatternFill` + bold `Font` + thick
+  `Border` from `ErrorHighlightStyle`; `source_row_index` keying, `document` stable-sort
+  (nulls last), 1-based row/col + header offset, technical columns hidden, empty-note branch.
+  Reuses `delete_directory_if_exists` / `ensure_output_directories`. `openpyxl.*` added to the
+  mypy import overrides.
+- **Config** (`config.py`): `empty_audit_findings` schema, audit-type/message constants,
+  `validate_audit_config`, `prepare_audit_root`, `resolve_audit_output_paths`.
+- **Parity:** new `data_audit` `CaptureSpec` + 15-row fixture (the full parser-vs-regex
+  divergence set). 6 goldens; `tests/parity/test_data_audit_parity.py` matches R on the findings
+  table, `invalid_row_index`, and the parsed value column (numeric compare). Unit suite
+  `tests/postpro/test_data_audit.py` (incl. openpyxl highlight readback).
+
+**Gates:** ruff + ruff-format clean · mypy strict clean (101 files) · **443 tests pass** (+31: 29
+unit + 2 parity). **Postpro Track C started** — audit done; standardize_units, diagnostics,
+utilities, and `clean_harmonize/` (multi-pass driver) remain, plus rule-engine
+`payload_application.py` and export (Stage 3).
+
 ## Baseline metrics (autocode)
 
 | metric | value |

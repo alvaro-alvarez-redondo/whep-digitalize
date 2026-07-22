@@ -92,9 +92,10 @@ disallow_untyped_defs = true
 files = ["src", "tests"]
 
 # Third-party modules without type stubs. Stage migrations add their own entries as they
-# introduce those imports (fastexcel/xlsxwriter at the ingest Excel IO boundary).
+# introduce those imports (fastexcel/xlsxwriter at the ingest Excel IO boundary; openpyxl at
+# the postpro audit styled-workbook boundary).
 [[tool.mypy.overrides]]
-module = ["anyascii.*", "fastexcel.*", "xlsxwriter.*"]
+module = ["anyascii.*", "fastexcel.*", "xlsxwriter.*", "openpyxl.*"]
 ignore_missing_imports = true
 
 # ---------------------------------------------------------------------------
