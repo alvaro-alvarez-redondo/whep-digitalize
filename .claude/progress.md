@@ -602,6 +602,33 @@ core). Remaining before E1: **C3 → C4**, **C5**.
 runner): **C4** (standardize aggregation + orchestration incl. the xlsx rule readers) and **C5**
 (diagnostics).
 
+## Phase 2 — postpro standardize aggregation + orchestration (C4) — ✅ (2026-07-23)
+
+`postpro/standardize_units/{aggregation,orchestration}.py` (`24-standardize-aggregation.R` +
+`24-standardize-orchestration.R`) — completes the standardize-units stage (also picks up the xlsx
+rule readers deferred from C3).
+
+- **`aggregation.py`** — `aggregate_standardized_rows` (collapse rows identical on every column
+  except the measure by summing it; all-null group → null; unique rows kept ahead of aggregated
+  groups; column order/schema preserved; idempotent) + `extract_aggregated_rows`. Duplicate-group
+  mask via `pl.struct(group_cols).is_duplicated()`.
+- **`orchestration.py`** — the deferred xlsx rule readers (`ensure_standardize_template_exists`,
+  `read_standardize_rule_workbook` [excludes `master_unit`], `read_all_standardize_rule_files`,
+  `load_units_standardization_rules`); `build_standardize_layer_audit` (merge prepared rules with
+  the engine's `matched_rule_counts`, attributing an `all commodity` rule to each applied
+  commodity); `attach_standardize_diagnostics` → `StandardizeDiagnostics`; and
+  `run_standardize_units_layer_batch` → typed `StandardizeLayerResult` (data + diagnostics + audit
+  + layer_rules + matched_rule_counts + aggregated_source_rows; R used data.table attributes).
+- **Parity:** new `standardize_agg` `CaptureSpec` + fixture. `test_standardize_agg_parity` matches
+  R on `aggregate_standardized_rows` (dup sum + all-NA→null + unique kept) and
+  `build_standardize_layer_audit` (commodity/affected/effective/target, all-commodity attribution).
+  Unit suite `tests/postpro/test_standardize_agg.py` mirrors the R testthat cases (aggregation
+  variants, extract, audit, diagnostics, readers, end-to-end run).
+
+**Gates:** ruff + ruff-format + mypy strict clean (121 files) · **530 tests pass** (+22: 20 unit +
+2 parity). **Track C complete: audit + utilities + standardize (core + agg/orchestration) done;
+diagnostics (C5) remains.** E1 (postpro 9-step runner) now needs only **C5**.
+
 ## Baseline metrics (autocode)
 
 | metric | value |

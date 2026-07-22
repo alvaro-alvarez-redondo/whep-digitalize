@@ -60,6 +60,10 @@ _LAYER_RUNNER = "r/2-postpro_pipeline/22-clean_harmonize_data/22-layer-runner.R"
 _NUMERIC_COERCION = "r/0-general_pipeline/02-helpers/02-numeric-coercion.R"
 _STANDARDIZE_RULES_SETUP = "r/2-postpro_pipeline/24-standardize_units/24-rules-setup.R"
 _STANDARDIZE_ENGINE = "r/2-postpro_pipeline/24-standardize_units/24-standardize-engine.R"
+_STANDARDIZE_AGGREGATION = "r/2-postpro_pipeline/24-standardize_units/24-standardize-aggregation.R"
+_STANDARDIZE_ORCHESTRATION = (
+    "r/2-postpro_pipeline/24-standardize_units/24-standardize-orchestration.R"
+)
 
 # Stage-level (run_import_pipeline) golden: the orchestration body is replicated inline over
 # the whole corpus (R's run_import_pipeline auto-sources via here::here + auto-runs, which the
@@ -352,6 +356,29 @@ _STANDARDIZE_PREAMBLE = (
     "res <- apply_standardize_rules(mapped, prepared, 'unit', 'value', 'commodity')\n"
     "mrc <- data.table::as.data.table(res$matched_rule_counts)[order("
     "rule_commodity_match_key, applied_commodity_match_key, unit_source_key)]"
+)
+
+# standardize_agg (C4): duplicate-group aggregation (sum measure; all-NA group -> NA; unique rows
+# kept) + build_standardize_layer_audit (merge prepared rules with matched counts). Both sorted
+# for a stable compare.
+_STANDARDIZE_AGG_PREAMBLE = (
+    "mk <- function(x) as.character(x)\n"
+    "agg_in <- data.table::data.table(commodity = mk(values$agg_commodity), "
+    "unit = mk(values$agg_unit), value = as.numeric(values$agg_value))\n"
+    "agg <- data.table::as.data.table(aggregate_standardized_rows(agg_in, 'value'))"
+    "[order(commodity, unit)]\n"
+    "layer_rules <- prepare_standardize_rules(data.table::data.table("
+    "commodity_key = mk(values$r_commodity), unit_source = mk(values$r_source), "
+    "unit_target = mk(values$r_target), unit_factor = as.numeric(values$r_factor), "
+    "unit_offset = as.numeric(values$r_offset), source_rule_sheet = mk(values$r_sheet), "
+    "source_rule_file = mk(values$r_file)))\n"
+    "mrc <- data.table::data.table(rule_commodity_match_key = mk(values$m_rule), "
+    "applied_commodity_match_key = mk(values$m_applied), unit_source_key = mk(values$m_unitkey), "
+    "affected_rows = as.integer(values$m_affected), source_unit_raw = mk(values$m_raw), "
+    "detected_prefix = as.numeric(values$m_prefix), "
+    "unit_factor_effective = as.numeric(values$m_eff))\n"
+    "audit <- data.table::as.data.table(build_standardize_layer_audit("
+    "layer_rules, mrc, values$r_file[[1]]))[order(commodity_key)]"
 )
 
 CAPTURES: dict[str, CaptureSpec] = {
@@ -936,6 +963,39 @@ CAPTURES: dict[str, CaptureSpec] = {
             "and the sorted matched_rule_counts (affected rows + effective multiplier) match R — "
             "incl. a specific prefixed rule, kg fallback, celsius->fahrenheit offset, and a "
             "comma-thousands prefix fold (parity risk #9)."
+        ),
+    ),
+    "standardize_agg": CaptureSpec(
+        module="standardize_agg",
+        r_sources=(
+            _GENERAL_CONSTANTS,
+            _ASSERTIONS,
+            _STRING_NORMALIZATION,
+            _NUMERIC_COERCION,
+            _AUDIT_DIAGNOSTICS,
+            _STANDARDIZE_RULES_SETUP,
+            _STANDARDIZE_AGGREGATION,
+            _STANDARDIZE_ORCHESTRATION,
+        ),
+        fixture="synthetic/standardize_agg_inputs.json",
+        preamble=_STANDARDIZE_AGG_PREAMBLE,
+        exports={
+            "agg_commodity": "agg$commodity",
+            "agg_value": "agg$value",
+            "agg_nrow": "as.character(nrow(agg))",
+            "audit_commodity": "audit$commodity_key",
+            "audit_affected": "as.character(audit$affected_rows)",
+            "audit_effective": "as.character(audit$unit_factor_effective)",
+            "audit_target": "audit$unit_target",
+            "audit_nrow": "as.character(nrow(audit))",
+        },
+        description=(
+            "Standardize aggregation + audit (24-standardize-aggregation.R + "
+            "24-standardize-orchestration.R): aggregate_standardized_rows sums duplicate groups "
+            "(all-NA group -> NA, unique rows kept) and build_standardize_layer_audit merges "
+            "prepared rules with matched-rule counts (all-commodity rule attributed to each "
+            "applied commodity). Both sorted; asserts the aggregated values + the audit "
+            "commodity/affected/effective/target match R."
         ),
     ),
 }

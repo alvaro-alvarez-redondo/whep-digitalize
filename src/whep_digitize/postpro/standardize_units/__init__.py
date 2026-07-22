@@ -13,10 +13,11 @@ Status (risk):
 * ``rules_setup.py`` <- ``24-rules-setup.R`` — **[done]** header aliasing, schema + conversion
   validation (normalized-key dedupe, chained-rule guard), ``prepare_standardize_rules``. The
   xlsx multi-sheet rule readers are the orchestration IO boundary and land with C4.
-* ``aggregation.py`` <- ``24-standardize-aggregation.R`` — sum measure over duplicate
+* ``aggregation.py`` <- ``24-standardize-aggregation.R`` — **[done]** sum measure over duplicate
   groups (all-NA group -> NA), order/schema preserving, idempotent. (MEDIUM)
-* ``orchestration.py`` <- ``24-standardize-orchestration.R`` — stage entry
-  ``run_standardize_units_layer_batch`` + rule readers + audit merge. (MEDIUM)
+* ``orchestration.py`` <- ``24-standardize-orchestration.R`` (+ the ``24-rules-setup.R`` xlsx
+  readers) — **[done]** `run_standardize_units_layer_batch` → `StandardizeLayerResult`, rule
+  readers, `build_standardize_layer_audit`, diagnostics. (MEDIUM)
 """
 
 from __future__ import annotations
