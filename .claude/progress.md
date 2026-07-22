@@ -297,6 +297,38 @@ corpus).
 (ingest) is done** — `run_import_pipeline` produces a parity-correct `ImportResult` on the
 frozen corpus.
 
+## Phase 2 (start) — postpro rule engine: matching_strategy + matching_values — ✅ (2026-07-22)
+
+First two rule-engine modules (bottom of the Stage 2 critical-path DAG), ported together:
+
+- **`rule_engine/matching_strategy.py`** (`23-matching-strategy.R`): `encode_target_rule_value`
+  / `decode_target_rule_value` (NA/blank ⇄ `na_placeholder` `"..NA_INTERNAL.."`),
+  `encode_rule_match_key` (normalize via `normalize_string` + NA → `na_match_key`
+  `"..NA_MATCH_KEY.."`), and the strategy/normalization resolvers
+  (`get_target_update_strategy_config`, `resolve_target_update_strategy`,
+  `resolve_tokenized_target_condition_columns` → `("footnotes", "notes")`,
+  `resolve_rule_match_normalization_settings`, fast-path toggle, empty overwrite-events frame).
+  Returns typed frozen dataclasses instead of R named lists.
+- **`rule_engine/matching_values.py`** (`23-matching-values.R`):
+  `match_rule_target_condition_values` (tokenized `;`-membership + full-string match, explicit
+  wildcard `__ANY__`, NA↔NA), `concatenate_existing_and_incoming_values` (order-preserving,
+  existing-first token dedupe; existing-only passes through un-deduped), and
+  `count_elementwise_value_changes` (the element-wise change count driving multi-pass
+  convergence).
+- **Parity risks hit:** #5 NA↔NA folding to `na_match_key` (both match paths) and #1
+  `Latin-ASCII; Lower` transliteration inside match keys (reuses `strings.normalize_string`).
+- **R quirk reproduced (not fixed):** in the tokenized path an empty-string current value never
+  matches — R keys the token lookup by the current value and base R cannot retrieve a list
+  element by an empty-string name (`list[[""]]` → `NULL`). Documented + regression-tested.
+- **Parity:** new `matching` `CaptureSpec` + `tests/fixtures/synthetic/matching_values_inputs.json`
+  (16 rows: unicode diacritics/ligatures/`ß`/`½`, Greek in the no-transliteration concat path,
+  NA/empty/wildcard/duplicate). 8 goldens; `tests/parity/test_matching_parity.py` matches R
+  byte-for-byte. Unit suite `tests/postpro/test_matching.py`.
+
+**Gates:** ruff clean · ruff-format clean · mypy strict clean (82 files) · **318 tests pass**
+(+47: 39 unit + 8 parity). Next on the critical path: `rule_engine/target_apply.py`
+(`last_rule_wins` + overwrite events, `concatenate`).
+
 ## Baseline metrics (autocode)
 
 | metric | value |

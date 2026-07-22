@@ -5,12 +5,13 @@ an optional ``column_target``/``value_target_raw`` guard), then rewrite source a
 target via a strategy. Every by-reference ``data.table::set`` becomes a functional polars
 scatter (join-back + ``when/then``).
 
-To migrate (risk):
+Status (risk):
 
-* ``matching_strategy.py`` <- ``23-matching-strategy.R`` — key encoding (NA -> ``na_match_key``),
-  strategy config, tokenized target columns (``footnotes``, ``notes``). (MEDIUM)
-* ``matching_values.py`` <- ``23-matching-values.R`` — tokenized ``;``-membership match,
-  order-preserving concat merge, elementwise change count (drives convergence). (HIGH)
+* ``matching_strategy.py`` <- ``23-matching-strategy.R`` — **[done]** key encoding
+  (NA -> ``na_match_key``), strategy config, tokenized target columns (``footnotes``,
+  ``notes``). (MEDIUM)
+* ``matching_values.py`` <- ``23-matching-values.R`` — **[done]** tokenized ``;``-membership
+  match, order-preserving concat merge, elementwise change count (drives convergence). (HIGH)
 * ``target_apply.py`` <- ``23-target-apply.R`` — ``last_rule_wins`` (stable-sort + group-last)
   with overwrite-event emission, and ``concatenate``. (HIGH)
 * ``conditional_group.py`` <- ``23-conditional-group.R`` — cartesian keyed join on

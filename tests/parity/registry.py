@@ -30,6 +30,10 @@ _PROCESSING = "r/1-import_pipeline/12-transform/12-processing.R"
 _VALIDATE = "r/1-import_pipeline/13-output/13-validate.R"
 _SORTING = "r/0-general_pipeline/02-helpers/02-sorting.R"
 _OUTPUT = "r/1-import_pipeline/13-output/13-output.R"
+# Postpro rule engine: match-key encode/decode + strategy config, then the tokenized match /
+# concat merge / change count. Both source only constants + normalize_string at runtime.
+_MATCHING_STRATEGY = "r/2-postpro_pipeline/23-postpro_rule_engine/23-matching-strategy.R"
+_MATCHING_VALUES = "r/2-postpro_pipeline/23-postpro_rule_engine/23-matching-values.R"
 
 # Stage-level (run_import_pipeline) golden: the orchestration body is replicated inline over
 # the whole corpus (R's run_import_pipeline auto-sources via here::here + auto-runs, which the
@@ -133,6 +137,19 @@ _VALIDATE_DUPS = (
 # Duplicate-alias-target scenario: two aliases both map to polity (only the first survives).
 _DEDUP_RAW = "c('Country', 'Nation', 'Continent')"
 _DEDUP_ALIAS = "c(country = 'polity', nation = 'polity')"
+
+# Rule-engine matching: the `values` fixture is an array-of-objects (fromJSON -> data.frame),
+# one parallel vector per function argument. Coerce every column to character so a mostly-null
+# column is not simplified to logical. The concatenate delimiter is the constant default ('; ').
+_MATCHING_PREAMBLE = (
+    "current_values <- as.character(values$current)\n"
+    "condition_values <- as.character(values$condition)\n"
+    "existing_values <- as.character(values$existing)\n"
+    "incoming_values <- as.character(values$incoming)\n"
+    "before_values <- as.character(values$before)\n"
+    "after_values <- as.character(values$after)\n"
+    "target_values <- as.character(values$target)"
+)
 
 CAPTURES: dict[str, CaptureSpec] = {
     "string_normalization": CaptureSpec(
@@ -361,6 +378,44 @@ CAPTURES: dict[str, CaptureSpec] = {
             "Stage-level run_import_pipeline over the whole corpus (orchestration replicated "
             "inline): the consolidated, canonically-sorted long frame plus the reading / "
             "validation / consolidation diagnostics. Python run_import_pipeline must match."
+        ),
+    ),
+    "matching": CaptureSpec(
+        module="matching",
+        r_sources=(_GENERAL_CONSTANTS, _STRING_NORMALIZATION, _MATCHING_STRATEGY, _MATCHING_VALUES),
+        fixture="synthetic/matching_values_inputs.json",
+        preamble=_MATCHING_PREAMBLE,
+        exports={
+            # Tokenized ;-membership match (incl. wildcard __ANY__ + NA<->NA) and the plain
+            # full-string match over the same current/condition pairs.
+            "match_tokenized": (
+                "match_rule_target_condition_values("
+                "current_values, condition_values, tokenized_target = TRUE)"
+            ),
+            "match_plain": (
+                "match_rule_target_condition_values("
+                "current_values, condition_values, tokenized_target = FALSE)"
+            ),
+            # Match-key encoding: normalized (NA -> na_match_key) and raw (apply_normalization
+            # = FALSE) forms.
+            "encode_key": "encode_rule_match_key(current_values)",
+            "encode_key_raw": "encode_rule_match_key(target_values, apply_normalization = FALSE)",
+            # Target NA <-> placeholder round trip (na_placeholder), and the standalone encode.
+            "encode_target": "encode_target_rule_value(target_values)",
+            "decode_target": "decode_target_rule_value(encode_target_rule_value(target_values))",
+            # Order-preserving, existing-first deduplicating concat merge.
+            "concat_merge": (
+                "concatenate_existing_and_incoming_values(existing_values, incoming_values, '; ')"
+            ),
+            # Element-wise change count (drives multi-pass convergence).
+            "change_count": "count_elementwise_value_changes(before_values, after_values)",
+        },
+        description=(
+            "Rule-engine matching & value merge (23-matching-strategy.R + 23-matching-values.R): "
+            "tokenized ;-membership matching with wildcard __ANY__, NA<->NA folding to "
+            "na_match_key (parity risk #5), na_placeholder target encode/decode, order-preserving "
+            "existing-first concat dedupe, and the element-wise change count — over unicode / NA / "
+            "empty / wildcard / duplicate edge cases."
         ),
     ),
 }

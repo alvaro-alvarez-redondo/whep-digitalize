@@ -94,8 +94,8 @@ Public: `runner.run_postpro_pipeline(raw, config, dataset_name=None, options=Non
 | `clean_harmonize/layer_runner.py` | `run_rule_stage_layer_batch` (multi-pass driver) | `22-layer-runner.R` | **HIGH** |
 | `clean_harmonize/controls_cache.py` | controls + cycle detection (hash, not serialize) | `22-controls-cache.R` | **HIGH** |
 | `clean_harmonize/stage_inputs.py` | `;`-token canonicalization; drop empty footnotes | `22-stage-inputs.R` | MEDIUM |
-| `rule_engine/matching_strategy.py` | key encode/decode, strategy config | `23-matching-strategy.R` | MEDIUM |
-| `rule_engine/matching_values.py` | tokenized match, concat merge, change count | `23-matching-values.R` | **HIGH** |
+| `rule_engine/matching_strategy.py` **[done]** | key encode/decode, strategy config | `23-matching-strategy.R` | MEDIUM |
+| `rule_engine/matching_values.py` **[done]** | tokenized match, concat merge, change count | `23-matching-values.R` | **HIGH** |
 | `rule_engine/target_apply.py` | `last_rule_wins` + overwrite events, `concatenate` | `23-target-apply.R` | **HIGH** |
 | `rule_engine/conditional_group.py` | keyed cartesian join, source+target scatter, audit | `23-conditional-group.R` | **HIGH** |
 | `rule_engine/footnote_rules.py` | explode→match→resolve→reconstruct | `23-footnote-rules.R` | **HIGH** (top) |

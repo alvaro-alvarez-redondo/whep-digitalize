@@ -1,0 +1,18 @@
+[
+  {"current": "a",              "condition": "a",        "existing": "a; b",            "incoming": "b; c",        "before": "a",    "after": "a",   "target": "a"},
+  {"current": "a; b; c",        "condition": "b",        "existing": "Café; Thé",       "incoming": "Thé; Lait",   "before": "b",    "after": "x",   "target": null},
+  {"current": "a; b; c",        "condition": "a; b; c",  "existing": null,              "incoming": "x",           "before": null,   "after": null,  "target": ""},
+  {"current": "Zürich; Genève", "condition": "geneve",   "existing": "y",               "incoming": null,          "before": "c",    "after": null,  "target": "  "},
+  {"current": "Café",           "condition": "cafe",     "existing": null,              "incoming": null,          "before": null,   "after": "y",   "target": "..NA_INTERNAL.."},
+  {"current": "x",              "condition": "__ANY__",  "existing": "",                "incoming": "z",           "before": "m",    "after": "m",   "target": "café"},
+  {"current": null,             "condition": "__ANY__",  "existing": "p; p; q",         "incoming": null,          "before": "n",    "after": "n2",  "target": "Zürich"},
+  {"current": null,             "condition": null,       "existing": ";",               "incoming": ";",           "before": "d",    "after": "d",   "target": "½ kg"},
+  {"current": "a",              "condition": null,       "existing": "a ; b",           "incoming": " b ;c ",      "before": null,   "after": "e",   "target": null},
+  {"current": null,             "condition": "a",        "existing": "a; a; b",         "incoming": "c",           "before": "e",    "after": null,  "target": "groß"},
+  {"current": "",               "condition": "",         "existing": "s",               "incoming": "s",           "before": "same", "after": "same","target": ""},
+  {"current": "a; ; b",         "condition": "b",        "existing": "t; u",            "incoming": "u; t",        "before": "1",    "after": "2",   "target": "x"},
+  {"current": "Œuvre; Straße",  "condition": "oeuvre",   "existing": "v",               "incoming": "w",           "before": "k",    "after": "k",   "target": "y"},
+  {"current": "Œuvre; Straße",  "condition": "strasse",  "existing": "m; n",            "incoming": "n; o; m",     "before": "p",    "after": "q",   "target": "z"},
+  {"current": "½ kg",           "condition": "1 2 kg",   "existing": "Ω; α",            "incoming": "β; Ω",        "before": "aa",   "after": "aa",  "target": "α"},
+  {"current": "a; b",           "condition": "b; a",     "existing": "long text; note", "incoming": "note; extra", "before": null,   "after": "bb",  "target": "note"}
+]
