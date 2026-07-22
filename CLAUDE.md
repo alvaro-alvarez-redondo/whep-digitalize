@@ -26,6 +26,13 @@ scaffolded with typed contracts. See [migration-roadmap.md](.claude/docs/migrati
   [conventions.md](.claude/docs/conventions.md)).
 - **Tests are ground truth.** Every behavior change ships with tests (incl. parity). Never
   lower pass rate.
+- **Log deferred bugs (mandatory).** Whenever you identify a bug but intentionally do **not**
+  fix it in the same session, you MUST add an entry to the **Deferred bugs** section of
+  [session-prompts.md](.claude/docs/session-prompts.md) — describing the bug, its impact, **why
+  it was deferred**, known risks, and the **conditions under which to revisit** — plus a
+  ready-to-paste fix prompt. Keep the list current throughout the project: remove an entry only
+  when the bug is fixed, so unresolved issues stay visible and actionable. (Intentional
+  R-divergences with no output impact are documented inline / in `progress.md`, not here.)
 - **Tone:** strict, technical. No filler.
 
 ## Reference docs (read on demand)
