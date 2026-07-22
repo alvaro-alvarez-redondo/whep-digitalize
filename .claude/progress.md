@@ -360,6 +360,40 @@ the strategy-dispatch core, built on `matching_strategy` + `matching_values`:
 unit + 4 parity). Next on the critical path: `rule_engine/conditional_group.py` (cartesian keyed
 join → source+target scatter → audit), which drives `apply_target_updates_with_strategy`.
 
+## Phase 2 — postpro rule engine: schema_validation (+ stage_definitions dep) — ✅ (2026-07-22)
+
+Ported `23-schema-validation.R` plus its small unported dependency `21-stage-definitions.R`:
+
+- **`utilities/stage_definitions.py`** (`21-stage-definitions.R`): `get_canonical_rule_columns`,
+  `get_postpro_stage_names`, `validate_postpro_stage_name` (exact match — R's `match.arg`
+  abbreviation is out of scope; callers pass full names), `get_stage_{source,target}_value_column`.
+  Added `stage_source_value_column`/`stage_target_value_column` to `constants.Postpro`.
+- **`rule_engine/schema_validation.py`** (`23-schema-validation.R`):
+  - `coerce_rule_schema` — strip `clean_`/`harmonize_` prefix (`str.removeprefix`), enforce the 6
+    canonical columns (`value_source` optional → synthesized null), carry
+    `source_value_column_present`; aborts on duplicate-after-normalization / missing-required /
+    unexpected columns.
+  - `validate_canonical_rules` — schema/required-value/dataset-column presence, **duplicate-key**
+    abort, target/source **conflict** aborts (structurally present but subsumed by the
+    duplicate-key check, as in R), and `check_type_compatibility` (no-op on the all-text String
+    dataset; numeric/integer/Date branches faithful for non-string columns).
+  - `build_conditional_rule_dictionary` — group by `(column_source, column_target)`; within-group
+    order is code-point radix + NA-last (parity risk #7); **group order reproduces R's
+    `interaction` factor order** = sorted by `(column_target, column_source)` (verified against the
+    golden), with null source/target rows dropped (R `split` drops NA levels). Returns
+    `list[pl.DataFrame]` (the consumer iterates positionally and reads `column_source[0]`).
+  - Supporting: `normalize_rule_values_for_validation` (blank/NA → `na_placeholder`),
+    `ensure_rule_referenced_columns` (functional column add; the R duplicate-dataset-column guard
+    is a structurally-unreachable mirror — polars forbids duplicate columns).
+- **Parity:** new `schema_validation` `CaptureSpec` + unicode/case/NA fixture. 15 goldens:
+  flattened dictionary groups (group order + within-group `"Apple"`<`"apple"`<`"éclair"`<NA),
+  coerce in both flag states, and validate abort-or-not (valid / duplicate-key / missing-column,
+  captured with R `try()`). `tests/parity/test_schema_validation_parity.py` matches byte-for-byte.
+
+**Gates:** ruff + ruff-format clean · mypy strict clean (89 files) · **373 tests pass** (+31: 25
+unit + 6 parity). Next on the critical path: `rule_engine/conditional_group.py` and
+`rule_engine/footnote_rules.py`, then `payload_application.py` wires them together.
+
 ## Baseline metrics (autocode)
 
 | metric | value |

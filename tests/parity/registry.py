@@ -35,6 +35,8 @@ _OUTPUT = "r/1-import_pipeline/13-output/13-output.R"
 _MATCHING_STRATEGY = "r/2-postpro_pipeline/23-postpro_rule_engine/23-matching-strategy.R"
 _MATCHING_VALUES = "r/2-postpro_pipeline/23-postpro_rule_engine/23-matching-values.R"
 _TARGET_APPLY = "r/2-postpro_pipeline/23-postpro_rule_engine/23-target-apply.R"
+_STAGE_DEFINITIONS = "r/2-postpro_pipeline/21-postpro_utilities/21-stage-definitions.R"
+_SCHEMA_VALIDATION = "r/2-postpro_pipeline/23-postpro_rule_engine/23-schema-validation.R"
 
 # Stage-level (run_import_pipeline) golden: the orchestration body is replicated inline over
 # the whole corpus (R's run_import_pipeline auto-sources via here::here + auto-runs, which the
@@ -183,6 +185,42 @@ _TARGET_APPLY_PREAMBLE = (
     "value_target_result = mk(values$D_value), value_target_raw = mk(values$D_cond))\n"
     "resD <- apply_target_updates_with_strategy(dsD, updD, 'notes', dataset_name = 'whep', "
     "execution_stage = 'harmonize', rule_file_identifier = 'rulesD.xlsx', source_column = 'polity')"
+)
+
+# schema_validation: dictionary grouping/ordering (radix code-point + NA-last, over a unicode/
+# case/NA rule set) via the flattened groups; coerce_rule_schema (prefix strip + canonical
+# reorder + value_source optional/synthesized + source_value_column_present); and abort-or-not
+# for validate_canonical_rules (valid / duplicate-key / missing-dataset-column), captured with
+# try() since cli_abort would otherwise crash the Rscript. Unicode lives in the fixture; the
+# preamble stays ASCII.
+_SCHEMA_VALIDATION_PREAMBLE = (
+    "mk <- function(x) as.character(x)\n"
+    "mkrules <- function(cs, vsr, vs, ct, vtr, vt) data.table::data.table("
+    "column_source = mk(cs), value_source_raw = mk(vsr), value_source = mk(vs), "
+    "column_target = mk(ct), value_target_raw = mk(vtr), value_target = mk(vt))\n"
+    "dict_rules <- mkrules(values$dict_cs, values$dict_vsr, values$dict_vs, values$dict_ct, "
+    "values$dict_vtr, values$dict_vt)\n"
+    "dict <- build_conditional_rule_dictionary(dict_rules, 'clean')\n"
+    "dict_flat <- data.table::rbindlist(dict)\n"
+    "coercedA <- coerce_rule_schema(data.table::data.table("
+    "clean_value_target = mk(values$cA_vt), clean_column_source = mk(values$cA_cs), "
+    "clean_value_target_raw = mk(values$cA_vtr), clean_value_source = mk(values$cA_vs), "
+    "clean_column_target = mk(values$cA_ct), clean_value_source_raw = mk(values$cA_vsr)), "
+    "'clean', 'rulesA.xlsx')\n"
+    "coercedB <- coerce_rule_schema(data.table::data.table("
+    "clean_column_source = mk(values$cB_cs), clean_value_source_raw = mk(values$cB_vsr), "
+    "clean_column_target = mk(values$cB_ct), clean_value_target_raw = mk(values$cB_vtr), "
+    "clean_value_target = mk(values$cB_vt)), 'clean', 'rulesB.xlsx')\n"
+    "dataset <- data.table::data.table(commodity = mk(values$ds_commodity), "
+    "unit = mk(values$ds_unit), continent = mk(values$ds_continent))\n"
+    "v_rules <- mkrules(values$v_cs, values$v_vsr, values$v_vs, values$v_ct, values$v_vtr, "
+    "values$v_vt)\n"
+    "dup_rules <- mkrules(values$dup_cs, values$dup_vsr, values$dup_vs, values$dup_ct, "
+    "values$dup_vtr, values$dup_vt)\n"
+    "mc_rules <- mkrules(values$mc_cs, values$mc_vsr, values$mc_vs, values$mc_ct, values$mc_vtr, "
+    "values$mc_vt)\n"
+    "aborts <- function(r) as.character(inherits(try(validate_canonical_rules("
+    "r, dataset, 'rules.xlsx', 'clean'), silent = TRUE), 'try-error'))"
 )
 
 CAPTURES: dict[str, CaptureSpec] = {
@@ -497,6 +535,42 @@ CAPTURES: dict[str, CaptureSpec] = {
             "overwrite events only when unique_candidate_count>1, null candidate -> 'NA' paste), "
             "plus concatenate and wildcard-already-present removal. Functional scatter must match "
             "R's in-place data.table::set on the mutated column, events table, and change counts."
+        ),
+    ),
+    "schema_validation": CaptureSpec(
+        module="schema_validation",
+        r_sources=(_GENERAL_CONSTANTS, _STAGE_DEFINITIONS, _SCHEMA_VALIDATION),
+        fixture="synthetic/schema_validation_inputs.json",
+        preamble=_SCHEMA_VALIDATION_PREAMBLE,
+        exports={
+            # Dictionary: group count + flattened groups (encodes group order AND within-group
+            # radix/code-point order incl. NA-last).
+            "dict_ngroups": "as.character(length(dict))",
+            "dict_flat_column_source": "dict_flat$column_source",
+            "dict_flat_column_target": "dict_flat$column_target",
+            "dict_flat_value_source_raw": "dict_flat$value_source_raw",
+            "dict_flat_value_target": "dict_flat$value_target",
+            # coerce: canonical column set/order, the source_value_column_present flag, and the
+            # (synthesized-when-absent) value_source column.
+            "cA_columns": "colnames(coercedA)",
+            "cA_source_value_column_present": "coercedA$source_value_column_present",
+            "cA_value_source": "coercedA$value_source",
+            "cA_column_source": "coercedA$column_source",
+            "cB_columns": "colnames(coercedB)",
+            "cB_source_value_column_present": "coercedB$source_value_column_present",
+            "cB_value_source": "coercedB$value_source",
+            # validate_canonical_rules abort-or-not (valid / duplicate-key / missing dataset col).
+            "validate_valid_aborts": "aborts(v_rules)",
+            "validate_duplicate_aborts": "aborts(dup_rules)",
+            "validate_missing_column_aborts": "aborts(mc_rules)",
+        },
+        description=(
+            "Rule schema coercion + canonical validation + dictionary construction "
+            "(23-schema-validation.R): coerce_rule_schema (stage-prefix strip, canonical reorder, "
+            "value_source optional/synthesized, source_value_column_present); "
+            "build_conditional_rule_dictionary grouping by (column_source, column_target) with "
+            "radix/code-point + NA-last within-group order (parity risk #7); and "
+            "validate_canonical_rules duplicate-key / missing-column aborts."
         ),
     ),
 }

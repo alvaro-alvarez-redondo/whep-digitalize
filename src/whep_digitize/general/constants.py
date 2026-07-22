@@ -306,6 +306,9 @@ class Postpro:
         "value_target_raw",
         "value_target",
     )
+    # Unified source/target result-value columns (R get_stage_{source,target}_value_column()).
+    stage_source_value_column: str = "value_source"
+    stage_target_value_column: str = "value_target"
     stage_names: tuple[str, ...] = ("clean", "harmonize")
     standardization: Standardization = field(default_factory=Standardization)
     rule_match_normalization: RuleMatchNormalization = field(default_factory=RuleMatchNormalization)

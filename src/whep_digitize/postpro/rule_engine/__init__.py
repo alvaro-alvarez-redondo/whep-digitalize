@@ -18,7 +18,7 @@ Status (risk):
   ``source_key``, subset target-condition match, source+target scatter, audit. (HIGH)
 * ``footnote_rules.py`` <- ``23-footnote-rules.R`` — explode ``;`` tokens -> match ->
   resolve (remove > replace > original) -> reconstruct. The hardest single port. (HIGH)
-* ``schema_validation.py`` <- ``23-schema-validation.R`` — coerce/validate rules,
+* ``schema_validation.py`` <- ``23-schema-validation.R`` — **[done]** coerce/validate rules,
   duplicate/conflict checks, radix-ordered conditional dictionary. (MEDIUM-HIGH)
 * ``payload_application.py`` <- ``23-payload-application.R`` — per-file orchestration:
   footnote rules first, then each conditional group. (LOW-MEDIUM)
