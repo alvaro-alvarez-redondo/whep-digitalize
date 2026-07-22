@@ -568,6 +568,40 @@ the Stage-2 critical path. Unblocked by C2 (payload loaders). **Rule engine now 
 only Track C's C4 (standardize agg + orchestration) and C5 (diagnostics), plus C3 (standardize
 core). Remaining before E1: **C3 → C4**, **C5**.
 
+## Phase 2 — postpro standardize-units core (C3): rules_setup + engine — ✅ (2026-07-23)
+
+`postpro/standardize_units/{rules_setup,engine}.py` (`24-rules-setup.R` + `24-standardize-engine.R`)
+— the HIGH-risk affine unit-conversion core (parity risk #9).
+
+- **`rules_setup.py`** — `normalize_conversion_rule_columns` (legacy-header aliasing; reject two
+  aliases → one canonical column), `validate_rule_schema`, `validate_conversion_rules`
+  (normalized-key dedupe incl. case variants, finite factor/offset, chained-rule self-join guard
+  excluding `all commodity`), and `prepare_standardize_rules` (materialize `unit_factor_num` /
+  `unit_offset_num` + normalized `commodity_match_key` / `unit_source_key`). The xlsx multi-sheet
+  rule readers are the orchestration IO boundary → deferred to C4.
+- **`engine.py`** — `apply_standardize_rules` → `StandardizeResult(data, matched_count,
+  unmatched_count, matched_rule_counts)`, in order **fold → revert-probe → two-stage match →
+  affine convert**:
+  - **multiplier fold** (regex `Patterns.standardize_multiplier_prefix`): `"1000 head"` value 5 →
+    5000 unit `head`; comma thousands stripped; applied only for a finite prefix ≠ 1;
+  - **revert-probe**: a folded row reverts to its original prefixed unit only when a rule matches
+    that original form (specific, else `all commodity`) — else its base unit is kept so a
+    base/fallback rule applies (the "not stranded" / "revert-to-all-commodity" cases);
+  - **two-stage match** (specific commodity → `all commodity` fallback) then affine convert
+    (`value * factor + offset`), rewriting the unit to the target; non-numeric non-blank values
+    abort.
+- **Parity:** new `standardize` `CaptureSpec` + one rich fixture (specific prefixed rule + kg
+  fallback + celsius→fahrenheit offset + comma-thousands fold + an unmatched row).
+  `test_standardize_parity` matches R on the converted value/unit, matched/unmatched counts, and
+  the sorted `matched_rule_counts` (affected rows + effective multiplier). Unit suite
+  `tests/postpro/test_standardize_units.py` mirrors the R testthat cases (conversion, offset,
+  fallback + attribution, prefix priority, not-stranded, revert, all validation guards).
+
+**Gates:** ruff + ruff-format + mypy strict clean (117 files) · **508 tests pass** (+25: 23 unit +
+2 parity). **Track C: audit + utilities + standardize core done.** Remaining before E1 (postpro
+runner): **C4** (standardize aggregation + orchestration incl. the xlsx rule readers) and **C5**
+(diagnostics).
+
 ## Baseline metrics (autocode)
 
 | metric | value |

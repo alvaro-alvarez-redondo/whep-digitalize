@@ -74,6 +74,9 @@ class Patterns:
     # float parser: rejects negatives / scientific / signs, so "-3.5" is flagged yet parses
     # (parity risk #8).
     audit_numeric_string: str = r"^[0-9]+(\.[0-9]+)?$"
+    # Leading numeric multiplier in a unit string ("1000 head"): group 1 = the number (digits,
+    # dots/commas, optional exponent), group 2 = the base unit (24-standardize-engine.R, risk #9).
+    standardize_multiplier_prefix: str = r"^(\s*[0-9][0-9.,]*(?:[eE][+-]?[0-9]+)?)[ _-]+(.+)$"
     footnote_non_alnum: str = r"[^a-z0-9 ;/*().,#%:-]+"
     file_extension: str = r"\.[a-z0-9]+$"
 
@@ -283,6 +286,15 @@ class Standardization:
     """Unit-standardization rule-file settings."""
 
     excluded_sheet_names: tuple[str, ...] = ("master_unit",)
+    # Generic fallback commodity key tried when no specific-commodity rule matches.
+    all_commodity_key: str = "all commodity"
+    required_rule_columns: tuple[str, ...] = (
+        "commodity_key",
+        "unit_source",
+        "unit_target",
+        "unit_factor",
+        "unit_offset",
+    )
 
 
 @dataclass(frozen=True, slots=True)
