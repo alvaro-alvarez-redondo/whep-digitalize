@@ -329,6 +329,37 @@ First two rule-engine modules (bottom of the Stage 2 critical-path DAG), ported 
 (+47: 39 unit + 8 parity). Next on the critical path: `rule_engine/target_apply.py`
 (`last_rule_wins` + overwrite events, `concatenate`).
 
+## Phase 2 — postpro rule engine: target_apply — ✅ (2026-07-22)
+
+`rule_engine/target_apply.py` (`23-target-apply.R`, `apply_target_updates_with_strategy`) —
+the strategy-dispatch core, built on `matching_strategy` + `matching_values`:
+
+- **last_rule_wins:** stable-sort candidates by the order columns (setorderv default: ascending,
+  NAs first), then group-last per row. A *fast path* (each row updated once) skips the collapse;
+  the *slow path* emits an overwrite-event row per dataset row that got >1 **distinct** candidate
+  (`unique_candidate_count > 1`).
+- **concatenate:** per-row paste of candidates, then order-preserving existing-first token merge.
+- **condition matching + wildcard:** conditioned updates are filtered by
+  `match_rule_target_condition_values`; wildcard candidates whose value is already present in the
+  current cell are dropped. Surviving conditioned rows are appended after the unconditional rows
+  (R `rbindlist` order).
+- **Functional scatter (parity risk #10):** R's in-place `data.table::set` becomes a join-back on
+  a synthesized row index + `when/then/otherwise`; the updated frame is returned in the new
+  `TargetApplyResult` (`applied`, `dataset`, `overwrite_events`, `changed_value_count`) instead of
+  mutating the argument.
+- **R behaviors preserved:** the wildcard token only matches for tokenized targets (else literal);
+  `candidate_values` reproduces R `paste()` — a null candidate becomes the literal `"NA"`; a null
+  `selected_value` rides through.
+- **Parity:** new `target_apply` `CaptureSpec` + `tests/fixtures/synthetic/target_apply_inputs.json`
+  (4 scenarios: lrw fast path, lrw slow path with a conflict + null candidate, concatenate,
+  wildcard-removal). 26 goldens; `tests/parity/test_target_apply_parity.py` matches R byte-for-byte
+  (mutated column, `applied`, `changed_value_count`, full overwrite-events frame). Unit suite
+  `tests/postpro/test_target_apply.py`.
+
+**Gates:** ruff + ruff-format clean · mypy strict clean (85 files) · **342 tests pass** (+24: 20
+unit + 4 parity). Next on the critical path: `rule_engine/conditional_group.py` (cartesian keyed
+join → source+target scatter → audit), which drives `apply_target_updates_with_strategy`.
+
 ## Baseline metrics (autocode)
 
 | metric | value |

@@ -1,0 +1,22 @@
+{
+  "dataset_unit": ["kg", "t", "kg", "x", "Café"],
+  "dataset_notes": ["a", "b; c", "", "note"],
+  "dataset_notes_d": ["a; b", "x"],
+
+  "A_row_id": ["1", "2", "3", "4", "5"],
+  "A_value": ["KILO", "TON", "KILO2", "XX", "COFFEE"],
+  "A_cond": [null, "t", "wheat", "__ANY__", "cafe"],
+
+  "B_row_id": ["1", "1", "2", "2", "3", "4", "4"],
+  "B_value": ["A", "B", "C", "C", "D", "P", null],
+  "B_cond": [null, null, null, null, null, null, null],
+  "B_seq": ["3", "1", "2", "4", "5", "6", "7"],
+
+  "C_row_id": ["1", "2", "3", "2", "4", "1"],
+  "C_value": ["x", "c; d", "new", "e", "  ", "y"],
+  "C_cond": [null, null, null, null, null, "wrongcond"],
+
+  "D_row_id": ["1", "2"],
+  "D_value": ["a", "z"],
+  "D_cond": ["__ANY__", "__ANY__"]
+}

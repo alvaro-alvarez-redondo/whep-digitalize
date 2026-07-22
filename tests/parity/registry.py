@@ -34,6 +34,7 @@ _OUTPUT = "r/1-import_pipeline/13-output/13-output.R"
 # concat merge / change count. Both source only constants + normalize_string at runtime.
 _MATCHING_STRATEGY = "r/2-postpro_pipeline/23-postpro_rule_engine/23-matching-strategy.R"
 _MATCHING_VALUES = "r/2-postpro_pipeline/23-postpro_rule_engine/23-matching-values.R"
+_TARGET_APPLY = "r/2-postpro_pipeline/23-postpro_rule_engine/23-target-apply.R"
 
 # Stage-level (run_import_pipeline) golden: the orchestration body is replicated inline over
 # the whole corpus (R's run_import_pipeline auto-sources via here::here + auto-runs, which the
@@ -149,6 +150,39 @@ _MATCHING_PREAMBLE = (
     "before_values <- as.character(values$before)\n"
     "after_values <- as.character(values$after)\n"
     "target_values <- as.character(values$target)"
+)
+
+# target_apply: four scenarios exercising both strategies + the overwrite-event emitter. Each
+# builds a fresh data.table dataset (the R function mutates by reference) and update table from
+# the fixture, then runs apply_target_updates_with_strategy. Unicode lives in the fixture; the
+# preamble stays ASCII. A: last_rule_wins fast path (unique rows) + condition match/no-match +
+# literal-wildcard-on-plain-column + transliteration. B: last_rule_wins slow path with a
+# conflict (order_columns sort, null candidate -> "NA" paste, same-value row emits no event).
+# C: concatenate with a filtered conditioned update. D: wildcard-already-present removal.
+_TARGET_APPLY_PREAMBLE = (
+    "mk <- function(x) as.character(x)\n"
+    "dsA <- data.table::data.table(unit = mk(values$dataset_unit))\n"
+    "updA <- data.table::data.table(row_id = mk(values$A_row_id), "
+    "value_target_result = mk(values$A_value), value_target_raw = mk(values$A_cond))\n"
+    "resA <- apply_target_updates_with_strategy(dsA, updA, 'unit', dataset_name = 'whep', "
+    "execution_stage = 'clean', rule_file_identifier = 'rules.xlsx', source_column = 'commodity')\n"
+    "dsB <- data.table::data.table(unit = mk(values$dataset_unit))\n"
+    "updB <- data.table::data.table(row_id = mk(values$B_row_id), "
+    "value_target_result = mk(values$B_value), value_target_raw = mk(values$B_cond), "
+    "seq = mk(values$B_seq))\n"
+    "resB <- apply_target_updates_with_strategy(dsB, updB, 'unit', order_columns = 'seq', "
+    "dataset_name = 'whep', execution_stage = 'clean', rule_file_identifier = 'rules.xlsx', "
+    "source_column = 'commodity')\n"
+    "dsC <- data.table::data.table(notes = mk(values$dataset_notes))\n"
+    "updC <- data.table::data.table(row_id = mk(values$C_row_id), "
+    "value_target_result = mk(values$C_value), value_target_raw = mk(values$C_cond))\n"
+    "resC <- apply_target_updates_with_strategy(dsC, updC, 'notes', dataset_name = 'whep', "
+    "execution_stage = 'clean', rule_file_identifier = 'rules.xlsx', source_column = 'commodity')\n"
+    "dsD <- data.table::data.table(notes = mk(values$dataset_notes_d))\n"
+    "updD <- data.table::data.table(row_id = mk(values$D_row_id), "
+    "value_target_result = mk(values$D_value), value_target_raw = mk(values$D_cond))\n"
+    "resD <- apply_target_updates_with_strategy(dsD, updD, 'notes', dataset_name = 'whep', "
+    "execution_stage = 'harmonize', rule_file_identifier = 'rulesD.xlsx', source_column = 'polity')"
 )
 
 CAPTURES: dict[str, CaptureSpec] = {
@@ -416,6 +450,53 @@ CAPTURES: dict[str, CaptureSpec] = {
             "na_match_key (parity risk #5), na_placeholder target encode/decode, order-preserving "
             "existing-first concat dedupe, and the element-wise change count — over unicode / NA / "
             "empty / wildcard / duplicate edge cases."
+        ),
+    ),
+    "target_apply": CaptureSpec(
+        module="target_apply",
+        r_sources=(
+            _GENERAL_CONSTANTS,
+            _STRING_NORMALIZATION,
+            _MATCHING_STRATEGY,
+            _MATCHING_VALUES,
+            _TARGET_APPLY,
+        ),
+        fixture="synthetic/target_apply_inputs.json",
+        preamble=_TARGET_APPLY_PREAMBLE,
+        exports={
+            "A_unit": "dsA$unit",
+            "A_applied": "resA$applied",
+            "A_changed": "resA$changed_value_count",
+            "A_ev_nrow": "as.character(nrow(resA$overwrite_events))",
+            "B_unit": "dsB$unit",
+            "B_applied": "resB$applied",
+            "B_changed": "resB$changed_value_count",
+            "B_ev_nrow": "as.character(nrow(resB$overwrite_events))",
+            "B_ev_row_id": "resB$overwrite_events$row_id",
+            "B_ev_candidate_count": "resB$overwrite_events$candidate_count",
+            "B_ev_unique_candidate_count": "resB$overwrite_events$unique_candidate_count",
+            "B_ev_selected_value": "resB$overwrite_events$selected_value",
+            "B_ev_candidate_values": "resB$overwrite_events$candidate_values",
+            "B_ev_column_source": "resB$overwrite_events$column_source",
+            "B_ev_column_target": "resB$overwrite_events$column_target",
+            "B_ev_dataset_name": "resB$overwrite_events$dataset_name",
+            "B_ev_execution_stage": "resB$overwrite_events$execution_stage",
+            "B_ev_rule_file_identifier": "resB$overwrite_events$rule_file_identifier",
+            "C_notes": "dsC$notes",
+            "C_applied": "resC$applied",
+            "C_changed": "resC$changed_value_count",
+            "C_ev_nrow": "as.character(nrow(resC$overwrite_events))",
+            "D_notes": "dsD$notes",
+            "D_applied": "resD$applied",
+            "D_changed": "resD$changed_value_count",
+            "D_ev_nrow": "as.character(nrow(resD$overwrite_events))",
+        },
+        description=(
+            "apply_target_updates_with_strategy (23-target-apply.R): last_rule_wins fast path "
+            "(unique rows) + condition match and slow path (stable order-column sort, group-last, "
+            "overwrite events only when unique_candidate_count>1, null candidate -> 'NA' paste), "
+            "plus concatenate and wildcard-already-present removal. Functional scatter must match "
+            "R's in-place data.table::set on the mutated column, events table, and change counts."
         ),
     ),
 }
