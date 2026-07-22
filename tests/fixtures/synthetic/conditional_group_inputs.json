@@ -1,0 +1,23 @@
+{
+  "M_ds_commodity": ["wheat", "wheat", "wheat", "Café"],
+  "M_ds_unit":      ["kg", "kg", "kg", "kg"],
+  "M_r_cs":  ["commodity", "commodity"],
+  "M_r_vsr": ["wheat", "cafe"],
+  "M_r_vs":  ["WHEAT", "COFFEE"],
+  "M_r_ct":  ["unit", "unit"],
+  "M_r_vtr": ["kg", "kg"],
+  "M_r_vt":  ["tonne", "gram"],
+  "M_r_svc": ["TRUE", "TRUE"],
+
+  "SO_ds_commodity": ["wheat"], "SO_ds_unit": ["kg"],
+  "SO_r_cs": ["commodity"], "SO_r_vsr": ["wheat"], "SO_r_vs": ["WHEAT"],
+  "SO_r_ct": ["unit"], "SO_r_vtr": ["kg"], "SO_r_vt": ["kg"], "SO_r_svc": ["TRUE"],
+
+  "TO_ds_commodity": ["maize"], "TO_ds_unit": ["kg"],
+  "TO_r_cs": ["commodity"], "TO_r_vsr": ["maize"], "TO_r_vs": [null],
+  "TO_r_ct": ["unit"], "TO_r_vtr": ["kg"], "TO_r_vt": ["tonne"], "TO_r_svc": ["FALSE"],
+
+  "NM_ds_commodity": ["barley"], "NM_ds_unit": ["kg"],
+  "NM_r_cs": ["commodity"], "NM_r_vsr": ["wheat"], "NM_r_vs": ["WHEAT"],
+  "NM_r_ct": ["unit"], "NM_r_vtr": ["kg"], "NM_r_vt": ["tonne"], "NM_r_svc": ["TRUE"]
+}

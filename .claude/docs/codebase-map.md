@@ -87,6 +87,7 @@ Public: `runner.run_postpro_pipeline(raw, config, dataset_name=None, options=Non
 | `audit/validation.py` | non-empty + numeric-string validators, master validation | `20-audit-validation.R` | LOW |
 | `audit/config.py` | audit config + findings schema | `20-audit-config.R` | LOW |
 | `audit/export.py` | styled invalid-cell highlight (openpyxl) | `20-audit-export.R` | MEDIUM |
+| `utilities/stage_definitions.py` **[done]** | canonical rule columns, stage names + value columns | `21-stage-definitions.R` | LOW |
 | `utilities/output_roots.py` | resolve/create audit subtree | `21-output-roots.R` | LOW |
 | `utilities/diagnostics.py` | `build_layer_diagnostics` → `LayerDiagnostics` | `21-diagnostics.R` | LOW |
 | `utilities/templates.py` | rule templates; `read_rule_table` (all-text; sheet match) | `21-template-rules.R` | MEDIUM |
@@ -94,12 +95,12 @@ Public: `runner.run_postpro_pipeline(raw, config, dataset_name=None, options=Non
 | `clean_harmonize/layer_runner.py` | `run_rule_stage_layer_batch` (multi-pass driver) | `22-layer-runner.R` | **HIGH** |
 | `clean_harmonize/controls_cache.py` | controls + cycle detection (hash, not serialize) | `22-controls-cache.R` | **HIGH** |
 | `clean_harmonize/stage_inputs.py` | `;`-token canonicalization; drop empty footnotes | `22-stage-inputs.R` | MEDIUM |
-| `rule_engine/matching_strategy.py` | key encode/decode, strategy config | `23-matching-strategy.R` | MEDIUM |
-| `rule_engine/matching_values.py` | tokenized match, concat merge, change count | `23-matching-values.R` | **HIGH** |
-| `rule_engine/target_apply.py` | `last_rule_wins` + overwrite events, `concatenate` | `23-target-apply.R` | **HIGH** |
-| `rule_engine/conditional_group.py` | keyed cartesian join, source+target scatter, audit | `23-conditional-group.R` | **HIGH** |
-| `rule_engine/footnote_rules.py` | explode→match→resolve→reconstruct | `23-footnote-rules.R` | **HIGH** (top) |
-| `rule_engine/schema_validation.py` | coerce/validate rules, conditional dictionary | `23-schema-validation.R` | MED-HIGH |
+| `rule_engine/matching_strategy.py` **[done]** | key encode/decode, strategy config | `23-matching-strategy.R` | MEDIUM |
+| `rule_engine/matching_values.py` **[done]** | tokenized match, concat merge, change count | `23-matching-values.R` | **HIGH** |
+| `rule_engine/target_apply.py` **[done]** | `last_rule_wins` + overwrite events, `concatenate` | `23-target-apply.R` | **HIGH** |
+| `rule_engine/conditional_group.py` **[done]** | keyed cartesian join, source+target scatter, audit | `23-conditional-group.R` | **HIGH** |
+| `rule_engine/footnote_rules.py` **[done]** | explode→match→resolve→reconstruct | `23-footnote-rules.R` | **HIGH** (top) |
+| `rule_engine/schema_validation.py` **[done]** | coerce/validate rules, conditional dictionary | `23-schema-validation.R` | MED-HIGH |
 | `rule_engine/payload_application.py` | `apply_rule_payload`, execution plan | `23-payload-application.R` | LOW-MED |
 | `standardize_units/engine.py` | `apply_standardize_rules` (fold, 2-stage, affine) | `24-standardize-engine.R` | **HIGH** |
 | `standardize_units/rules_setup.py` | rule load, aliasing, chained-rule guard | `24-rules-setup.R` | MEDIUM |

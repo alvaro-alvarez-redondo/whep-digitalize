@@ -1,0 +1,25 @@
+{
+  "dict_cs":  ["commodity", "commodity", "commodity", "commodity", "polity", "commodity", "polity", "commodity"],
+  "dict_vsr": ["wheat",     "apple",     "Apple",     null,        "spain",  "apple",     "france", "éclair"],
+  "dict_vs":  [null,        null,        null,        null,        null,     null,        null,     null],
+  "dict_ct":  ["unit",      "unit",      "unit",      "unit",      "continent", "continent", "continent", "unit"],
+  "dict_vtr": ["t",         "kg",        "kg",        "x",         "eu",     null,        "af",     "u"],
+  "dict_vt":  ["z1",        "z2",        "z3",        "z4",        "z5",     "z6",        "z7",     "z8"],
+
+  "cA_cs":  ["commodity"], "cA_vsr": ["wheat"], "cA_vs": ["WHEAT"],
+  "cA_ct":  ["unit"],      "cA_vtr": ["t"],     "cA_vt": ["tonne"],
+
+  "cB_cs":  ["polity"], "cB_vsr": ["spain"], "cB_ct": ["continent"],
+  "cB_vtr": ["eu"],     "cB_vt":  ["europe"],
+
+  "ds_commodity": ["x"], "ds_unit": ["y"], "ds_continent": ["z"],
+
+  "v_cs":  ["commodity", "commodity"], "v_vsr": ["wheat", "rice"], "v_vs": [null, null],
+  "v_ct":  ["unit", "unit"],           "v_vtr": ["t", "kg"],       "v_vt": ["tonne", "kilo"],
+
+  "dup_cs":  ["commodity", "commodity"], "dup_vsr": ["wheat", "wheat"], "dup_vs": [null, null],
+  "dup_ct":  ["unit", "unit"],           "dup_vtr": ["t", "t"],         "dup_vt": ["tonne", "OTHER"],
+
+  "mc_cs":  ["commodity"], "mc_vsr": ["wheat"], "mc_vs": [null],
+  "mc_ct":  ["missing_col"], "mc_vtr": ["t"],   "mc_vt": ["tonne"]
+}

@@ -297,6 +297,169 @@ corpus).
 (ingest) is done** — `run_import_pipeline` produces a parity-correct `ImportResult` on the
 frozen corpus.
 
+## Phase 2 (start) — postpro rule engine: matching_strategy + matching_values — ✅ (2026-07-22)
+
+First two rule-engine modules (bottom of the Stage 2 critical-path DAG), ported together:
+
+- **`rule_engine/matching_strategy.py`** (`23-matching-strategy.R`): `encode_target_rule_value`
+  / `decode_target_rule_value` (NA/blank ⇄ `na_placeholder` `"..NA_INTERNAL.."`),
+  `encode_rule_match_key` (normalize via `normalize_string` + NA → `na_match_key`
+  `"..NA_MATCH_KEY.."`), and the strategy/normalization resolvers
+  (`get_target_update_strategy_config`, `resolve_target_update_strategy`,
+  `resolve_tokenized_target_condition_columns` → `("footnotes", "notes")`,
+  `resolve_rule_match_normalization_settings`, fast-path toggle, empty overwrite-events frame).
+  Returns typed frozen dataclasses instead of R named lists.
+- **`rule_engine/matching_values.py`** (`23-matching-values.R`):
+  `match_rule_target_condition_values` (tokenized `;`-membership + full-string match, explicit
+  wildcard `__ANY__`, NA↔NA), `concatenate_existing_and_incoming_values` (order-preserving,
+  existing-first token dedupe; existing-only passes through un-deduped), and
+  `count_elementwise_value_changes` (the element-wise change count driving multi-pass
+  convergence).
+- **Parity risks hit:** #5 NA↔NA folding to `na_match_key` (both match paths) and #1
+  `Latin-ASCII; Lower` transliteration inside match keys (reuses `strings.normalize_string`).
+- **R quirk reproduced (not fixed):** in the tokenized path an empty-string current value never
+  matches — R keys the token lookup by the current value and base R cannot retrieve a list
+  element by an empty-string name (`list[[""]]` → `NULL`). Documented + regression-tested.
+- **Parity:** new `matching` `CaptureSpec` + `tests/fixtures/synthetic/matching_values_inputs.json`
+  (16 rows: unicode diacritics/ligatures/`ß`/`½`, Greek in the no-transliteration concat path,
+  NA/empty/wildcard/duplicate). 8 goldens; `tests/parity/test_matching_parity.py` matches R
+  byte-for-byte. Unit suite `tests/postpro/test_matching.py`.
+
+**Gates:** ruff clean · ruff-format clean · mypy strict clean (82 files) · **318 tests pass**
+(+47: 39 unit + 8 parity). Next on the critical path: `rule_engine/target_apply.py`
+(`last_rule_wins` + overwrite events, `concatenate`).
+
+## Phase 2 — postpro rule engine: target_apply — ✅ (2026-07-22)
+
+`rule_engine/target_apply.py` (`23-target-apply.R`, `apply_target_updates_with_strategy`) —
+the strategy-dispatch core, built on `matching_strategy` + `matching_values`:
+
+- **last_rule_wins:** stable-sort candidates by the order columns (setorderv default: ascending,
+  NAs first), then group-last per row. A *fast path* (each row updated once) skips the collapse;
+  the *slow path* emits an overwrite-event row per dataset row that got >1 **distinct** candidate
+  (`unique_candidate_count > 1`).
+- **concatenate:** per-row paste of candidates, then order-preserving existing-first token merge.
+- **condition matching + wildcard:** conditioned updates are filtered by
+  `match_rule_target_condition_values`; wildcard candidates whose value is already present in the
+  current cell are dropped. Surviving conditioned rows are appended after the unconditional rows
+  (R `rbindlist` order).
+- **Functional scatter (parity risk #10):** R's in-place `data.table::set` becomes a join-back on
+  a synthesized row index + `when/then/otherwise`; the updated frame is returned in the new
+  `TargetApplyResult` (`applied`, `dataset`, `overwrite_events`, `changed_value_count`) instead of
+  mutating the argument.
+- **R behaviors preserved:** the wildcard token only matches for tokenized targets (else literal);
+  `candidate_values` reproduces R `paste()` — a null candidate becomes the literal `"NA"`; a null
+  `selected_value` rides through.
+- **Parity:** new `target_apply` `CaptureSpec` + `tests/fixtures/synthetic/target_apply_inputs.json`
+  (4 scenarios: lrw fast path, lrw slow path with a conflict + null candidate, concatenate,
+  wildcard-removal). 26 goldens; `tests/parity/test_target_apply_parity.py` matches R byte-for-byte
+  (mutated column, `applied`, `changed_value_count`, full overwrite-events frame). Unit suite
+  `tests/postpro/test_target_apply.py`.
+
+**Gates:** ruff + ruff-format clean · mypy strict clean (85 files) · **342 tests pass** (+24: 20
+unit + 4 parity). Next on the critical path: `rule_engine/conditional_group.py` (cartesian keyed
+join → source+target scatter → audit), which drives `apply_target_updates_with_strategy`.
+
+## Phase 2 — postpro rule engine: schema_validation (+ stage_definitions dep) — ✅ (2026-07-22)
+
+Ported `23-schema-validation.R` plus its small unported dependency `21-stage-definitions.R`:
+
+- **`utilities/stage_definitions.py`** (`21-stage-definitions.R`): `get_canonical_rule_columns`,
+  `get_postpro_stage_names`, `validate_postpro_stage_name` (exact match — R's `match.arg`
+  abbreviation is out of scope; callers pass full names), `get_stage_{source,target}_value_column`.
+  Added `stage_source_value_column`/`stage_target_value_column` to `constants.Postpro`.
+- **`rule_engine/schema_validation.py`** (`23-schema-validation.R`):
+  - `coerce_rule_schema` — strip `clean_`/`harmonize_` prefix (`str.removeprefix`), enforce the 6
+    canonical columns (`value_source` optional → synthesized null), carry
+    `source_value_column_present`; aborts on duplicate-after-normalization / missing-required /
+    unexpected columns.
+  - `validate_canonical_rules` — schema/required-value/dataset-column presence, **duplicate-key**
+    abort, target/source **conflict** aborts (structurally present but subsumed by the
+    duplicate-key check, as in R), and `check_type_compatibility` (no-op on the all-text String
+    dataset; numeric/integer/Date branches faithful for non-string columns).
+  - `build_conditional_rule_dictionary` — group by `(column_source, column_target)`; within-group
+    order is code-point radix + NA-last (parity risk #7); **group order reproduces R's
+    `interaction` factor order** = sorted by `(column_target, column_source)` (verified against the
+    golden), with null source/target rows dropped (R `split` drops NA levels). Returns
+    `list[pl.DataFrame]` (the consumer iterates positionally and reads `column_source[0]`).
+  - Supporting: `normalize_rule_values_for_validation` (blank/NA → `na_placeholder`),
+    `ensure_rule_referenced_columns` (functional column add; the R duplicate-dataset-column guard
+    is a structurally-unreachable mirror — polars forbids duplicate columns).
+- **Parity:** new `schema_validation` `CaptureSpec` + unicode/case/NA fixture. 15 goldens:
+  flattened dictionary groups (group order + within-group `"Apple"`<`"apple"`<`"éclair"`<NA),
+  coerce in both flag states, and validate abort-or-not (valid / duplicate-key / missing-column,
+  captured with R `try()`). `tests/parity/test_schema_validation_parity.py` matches byte-for-byte.
+
+**Gates:** ruff + ruff-format clean · mypy strict clean (89 files) · **373 tests pass** (+31: 25
+unit + 6 parity). Next on the critical path: `rule_engine/conditional_group.py` and
+`rule_engine/footnote_rules.py`, then `payload_application.py` wires them together.
+
+## Phase 2 — postpro rule engine: conditional_group — ✅ (2026-07-22)
+
+`rule_engine/conditional_group.py` (`23-conditional-group.R`, `apply_conditional_rule_group` +
+`prepare_conditional_rule_group`) — the source→target group applicator that drives
+`apply_target_updates_with_strategy`:
+
+- **Cartesian keyed join:** each dataset row is left-joined to the group's rules on the encoded
+  `source_key` (multi-match fans out). data.table's Y-then-X row order (dataset row, then rule
+  order) is reproduced by an explicit `(row_id, __rule_order__)` sort — the source/target
+  last-rule-wins reductions depend on it.
+- **Target-condition match** on the matched subset (reuses `match_rule_target_condition_values`);
+  `matched_row_mask = source_matched & target_condition`. Computing the condition over every
+  joined row then AND-ing is equivalent to R's matched-subset computation.
+- **Source rewrite** (functional scatter, last-rule-wins per row; change count over the
+  un-deduplicated before/after vectors, matching R) then **target update** via
+  `apply_target_updates_with_strategy` (`apply_condition_match=False`, `order_columns=["row_id"]`).
+- **Encoded-NA audit join-back:** group audited rows by `(source_key, target_key,
+  value_source_result, value_target_result_encoded)`, join back to the keyed rules, order by
+  `(column_source, column_target, value_source_raw, value_target_raw)`.
+- **Independent `changed_columns`** (parity focus): a group whose only effect was a source rewrite
+  marks the **source** column, not the target. Returns `ConditionalGroupResult` (functional; R
+  mutated the frame in place — risk #10).
+- **Parity:** new `conditional_group` `CaptureSpec` + 4-scenario fixture (M: 2 rules over 4 rows
+  incl. a `"Café"→"COFFEE"` transliteration match + audit grouping/affected-rows; SO: source-only;
+  TO: target-only; NM: no-match). 31 goldens; `tests/parity/test_conditional_group_parity.py`
+  matches R byte-for-byte (mutated columns, `changed_value_count`, `changed_columns`, full audit
+  frame). Unit suite `tests/postpro/test_conditional_group.py`.
+
+**Gates:** ruff + ruff-format clean · mypy strict clean (92 files) · **391 tests pass** (+18: 13
+unit + 5 parity). Rule engine: 5 of 7 modules done. Next: `rule_engine/footnote_rules.py` (the
+explode→match→resolve→reconstruct — the hardest single port), then `payload_application.py` wires
+footnote rules + conditional groups per rule file.
+
+## Phase 2 — postpro rule engine: footnote_rules — ✅ (2026-07-22)
+
+`rule_engine/footnote_rules.py` (`23-footnote-rules.R`, `apply_footnote_rules`) — the top-risk
+module: the `;`-explode / rule-match / resolve / reconstruct engine for footnote-sourced rules.
+
+- **R `strsplit` semantics reproduced exactly** (verified by an R probe): `NA` → one `NA` token,
+  `""` → zero tokens, and a **single trailing empty field is dropped** (`"a;"`→`["a"]`,
+  `";;"`→`["","" ]`) while leading/internal empties are kept. Exploded via a Python row loop
+  (`_r_strsplit`) since polars `str.split` keeps trailing empties and can't express this.
+- **Cartesian join** of each footnote token to the rules on the source key; Y-then-X order
+  reproduced via a `(row_id, footnote_index, __rule_order__)` sort.
+- **Conditional-target gating:** for rules targeting a data column with a condition, the match is
+  kept only when the current target value satisfies it (per-column normalization mirrors R).
+- **Precedence resolution** per `(row_id, footnote_index)`: **remove > replace > original**, with
+  the first replacement (join order) winning; reconstruct in `footnote_index` order (`;`-joined,
+  `NA` tokens dropped, all-`NA`/empty rows → `NA`).
+- **Target updates** via `apply_target_updates_with_strategy` (per target column,
+  `order_columns=["row_id","footnote_index"]`).
+- **Footnote change count** vs a snapshot before-image (functional — no in-place aliasing, so no
+  deep-copy needed); `changed_columns` marks `"footnotes"` only when the text actually changed.
+- **Audit** over matched, non-no-op token matches grouped by the 5 rule-value keys.
+- **Parity:** new `footnote_rules` `CaptureSpec` + one rich 12-row fixture (replace / remove /
+  multi-token / precedence / NA / `""` / trailing-`;` / whitespace / conditional-target /
+  transliteration / no-op). 17 goldens; `tests/parity/test_footnote_rules_parity.py` matches R
+  byte-for-byte (reconstructed footnotes, mutated target, change count, changed_columns, full
+  audit frame). Unit suite `tests/postpro/test_footnote_rules.py`.
+
+**Gates:** ruff + ruff-format clean · mypy strict clean (95 files) · **412 tests pass** (+21: 19
+unit + 2 parity). **Rule engine: 6 of 7 modules done** — only `payload_application.py` remains
+(the per-rule-file orchestration that splits footnote vs standard rules and applies footnote
+rules then each conditional group). After that: `clean_harmonize/` (multi-pass driver), audit,
+standardize_units, diagnostics, then export (Stage 3).
+
 ## Baseline metrics (autocode)
 
 | metric | value |

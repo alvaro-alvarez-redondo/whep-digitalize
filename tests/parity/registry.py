@@ -30,6 +30,15 @@ _PROCESSING = "r/1-import_pipeline/12-transform/12-processing.R"
 _VALIDATE = "r/1-import_pipeline/13-output/13-validate.R"
 _SORTING = "r/0-general_pipeline/02-helpers/02-sorting.R"
 _OUTPUT = "r/1-import_pipeline/13-output/13-output.R"
+# Postpro rule engine: match-key encode/decode + strategy config, then the tokenized match /
+# concat merge / change count. Both source only constants + normalize_string at runtime.
+_MATCHING_STRATEGY = "r/2-postpro_pipeline/23-postpro_rule_engine/23-matching-strategy.R"
+_MATCHING_VALUES = "r/2-postpro_pipeline/23-postpro_rule_engine/23-matching-values.R"
+_TARGET_APPLY = "r/2-postpro_pipeline/23-postpro_rule_engine/23-target-apply.R"
+_STAGE_DEFINITIONS = "r/2-postpro_pipeline/21-postpro_utilities/21-stage-definitions.R"
+_SCHEMA_VALIDATION = "r/2-postpro_pipeline/23-postpro_rule_engine/23-schema-validation.R"
+_CONDITIONAL_GROUP = "r/2-postpro_pipeline/23-postpro_rule_engine/23-conditional-group.R"
+_FOOTNOTE_RULES = "r/2-postpro_pipeline/23-postpro_rule_engine/23-footnote-rules.R"
 
 # Stage-level (run_import_pipeline) golden: the orchestration body is replicated inline over
 # the whole corpus (R's run_import_pipeline auto-sources via here::here + auto-runs, which the
@@ -133,6 +142,136 @@ _VALIDATE_DUPS = (
 # Duplicate-alias-target scenario: two aliases both map to polity (only the first survives).
 _DEDUP_RAW = "c('Country', 'Nation', 'Continent')"
 _DEDUP_ALIAS = "c(country = 'polity', nation = 'polity')"
+
+# Rule-engine matching: the `values` fixture is an array-of-objects (fromJSON -> data.frame),
+# one parallel vector per function argument. Coerce every column to character so a mostly-null
+# column is not simplified to logical. The concatenate delimiter is the constant default ('; ').
+_MATCHING_PREAMBLE = (
+    "current_values <- as.character(values$current)\n"
+    "condition_values <- as.character(values$condition)\n"
+    "existing_values <- as.character(values$existing)\n"
+    "incoming_values <- as.character(values$incoming)\n"
+    "before_values <- as.character(values$before)\n"
+    "after_values <- as.character(values$after)\n"
+    "target_values <- as.character(values$target)"
+)
+
+# target_apply: four scenarios exercising both strategies + the overwrite-event emitter. Each
+# builds a fresh data.table dataset (the R function mutates by reference) and update table from
+# the fixture, then runs apply_target_updates_with_strategy. Unicode lives in the fixture; the
+# preamble stays ASCII. A: last_rule_wins fast path (unique rows) + condition match/no-match +
+# literal-wildcard-on-plain-column + transliteration. B: last_rule_wins slow path with a
+# conflict (order_columns sort, null candidate -> "NA" paste, same-value row emits no event).
+# C: concatenate with a filtered conditioned update. D: wildcard-already-present removal.
+_TARGET_APPLY_PREAMBLE = (
+    "mk <- function(x) as.character(x)\n"
+    "dsA <- data.table::data.table(unit = mk(values$dataset_unit))\n"
+    "updA <- data.table::data.table(row_id = mk(values$A_row_id), "
+    "value_target_result = mk(values$A_value), value_target_raw = mk(values$A_cond))\n"
+    "resA <- apply_target_updates_with_strategy(dsA, updA, 'unit', dataset_name = 'whep', "
+    "execution_stage = 'clean', rule_file_identifier = 'rules.xlsx', source_column = 'commodity')\n"
+    "dsB <- data.table::data.table(unit = mk(values$dataset_unit))\n"
+    "updB <- data.table::data.table(row_id = mk(values$B_row_id), "
+    "value_target_result = mk(values$B_value), value_target_raw = mk(values$B_cond), "
+    "seq = mk(values$B_seq))\n"
+    "resB <- apply_target_updates_with_strategy(dsB, updB, 'unit', order_columns = 'seq', "
+    "dataset_name = 'whep', execution_stage = 'clean', rule_file_identifier = 'rules.xlsx', "
+    "source_column = 'commodity')\n"
+    "dsC <- data.table::data.table(notes = mk(values$dataset_notes))\n"
+    "updC <- data.table::data.table(row_id = mk(values$C_row_id), "
+    "value_target_result = mk(values$C_value), value_target_raw = mk(values$C_cond))\n"
+    "resC <- apply_target_updates_with_strategy(dsC, updC, 'notes', dataset_name = 'whep', "
+    "execution_stage = 'clean', rule_file_identifier = 'rules.xlsx', source_column = 'commodity')\n"
+    "dsD <- data.table::data.table(notes = mk(values$dataset_notes_d))\n"
+    "updD <- data.table::data.table(row_id = mk(values$D_row_id), "
+    "value_target_result = mk(values$D_value), value_target_raw = mk(values$D_cond))\n"
+    "resD <- apply_target_updates_with_strategy(dsD, updD, 'notes', dataset_name = 'whep', "
+    "execution_stage = 'harmonize', rule_file_identifier = 'rulesD.xlsx', source_column = 'polity')"
+)
+
+# schema_validation: dictionary grouping/ordering (radix code-point + NA-last, over a unicode/
+# case/NA rule set) via the flattened groups; coerce_rule_schema (prefix strip + canonical
+# reorder + value_source optional/synthesized + source_value_column_present); and abort-or-not
+# for validate_canonical_rules (valid / duplicate-key / missing-dataset-column), captured with
+# try() since cli_abort would otherwise crash the Rscript. Unicode lives in the fixture; the
+# preamble stays ASCII.
+_SCHEMA_VALIDATION_PREAMBLE = (
+    "mk <- function(x) as.character(x)\n"
+    "mkrules <- function(cs, vsr, vs, ct, vtr, vt) data.table::data.table("
+    "column_source = mk(cs), value_source_raw = mk(vsr), value_source = mk(vs), "
+    "column_target = mk(ct), value_target_raw = mk(vtr), value_target = mk(vt))\n"
+    "dict_rules <- mkrules(values$dict_cs, values$dict_vsr, values$dict_vs, values$dict_ct, "
+    "values$dict_vtr, values$dict_vt)\n"
+    "dict <- build_conditional_rule_dictionary(dict_rules, 'clean')\n"
+    "dict_flat <- data.table::rbindlist(dict)\n"
+    "coercedA <- coerce_rule_schema(data.table::data.table("
+    "clean_value_target = mk(values$cA_vt), clean_column_source = mk(values$cA_cs), "
+    "clean_value_target_raw = mk(values$cA_vtr), clean_value_source = mk(values$cA_vs), "
+    "clean_column_target = mk(values$cA_ct), clean_value_source_raw = mk(values$cA_vsr)), "
+    "'clean', 'rulesA.xlsx')\n"
+    "coercedB <- coerce_rule_schema(data.table::data.table("
+    "clean_column_source = mk(values$cB_cs), clean_value_source_raw = mk(values$cB_vsr), "
+    "clean_column_target = mk(values$cB_ct), clean_value_target_raw = mk(values$cB_vtr), "
+    "clean_value_target = mk(values$cB_vt)), 'clean', 'rulesB.xlsx')\n"
+    "dataset <- data.table::data.table(commodity = mk(values$ds_commodity), "
+    "unit = mk(values$ds_unit), continent = mk(values$ds_continent))\n"
+    "v_rules <- mkrules(values$v_cs, values$v_vsr, values$v_vs, values$v_ct, values$v_vtr, "
+    "values$v_vt)\n"
+    "dup_rules <- mkrules(values$dup_cs, values$dup_vsr, values$dup_vs, values$dup_ct, "
+    "values$dup_vtr, values$dup_vt)\n"
+    "mc_rules <- mkrules(values$mc_cs, values$mc_vsr, values$mc_vs, values$mc_ct, values$mc_vtr, "
+    "values$mc_vt)\n"
+    "aborts <- function(r) as.character(inherits(try(validate_canonical_rules("
+    "r, dataset, 'rules.xlsx', 'clean'), silent = TRUE), 'try-error'))"
+)
+
+# conditional_group: four scenarios for apply_conditional_rule_group. Each builds a fresh
+# data.table dataset (mutated by reference) and a coerced-form rule group (with the
+# source_value_column_present flag), then runs the function. M: two rules over four rows incl. a
+# transliteration match ("Café" via "cafe"), exercising audit grouping + affected-row counts +
+# (source, target) both changing. SO: a source rewrite whose target update is a no-op — must mark
+# only the source column. TO: no source-result value (flag FALSE) — target-only. NM: no match.
+# Unicode lives in the fixture; the preamble stays ASCII.
+_CONDITIONAL_GROUP_PREAMBLE = (
+    "mk <- function(x) as.character(x)\n"
+    "mkgroup <- function(cs, vsr, vs, ct, vtr, vt, svc) data.table::data.table("
+    "column_source = mk(cs), value_source_raw = mk(vsr), value_source = mk(vs), "
+    "column_target = mk(ct), value_target_raw = mk(vtr), value_target = mk(vt), "
+    "source_value_column_present = as.logical(mk(svc)))\n"
+    "run <- function(ds, g) apply_conditional_rule_group(ds, group_rules = g, "
+    "stage_name = 'clean', dataset_name = 'whep', rule_file_id = 'rules.xlsx', "
+    "execution_timestamp_utc = '2026-01-01T00:00:00Z')\n"
+    "dsM <- data.table::data.table(commodity = mk(values$M_ds_commodity), "
+    "unit = mk(values$M_ds_unit))\n"
+    "resM <- run(dsM, mkgroup(values$M_r_cs, values$M_r_vsr, values$M_r_vs, values$M_r_ct, "
+    "values$M_r_vtr, values$M_r_vt, values$M_r_svc))\n"
+    "dsS <- data.table::data.table(commodity = mk(values$SO_ds_commodity), "
+    "unit = mk(values$SO_ds_unit))\n"
+    "resS <- run(dsS, mkgroup(values$SO_r_cs, values$SO_r_vsr, values$SO_r_vs, values$SO_r_ct, "
+    "values$SO_r_vtr, values$SO_r_vt, values$SO_r_svc))\n"
+    "dsT <- data.table::data.table(commodity = mk(values$TO_ds_commodity), "
+    "unit = mk(values$TO_ds_unit))\n"
+    "resT <- run(dsT, mkgroup(values$TO_r_cs, values$TO_r_vsr, values$TO_r_vs, values$TO_r_ct, "
+    "values$TO_r_vtr, values$TO_r_vt, values$TO_r_svc))\n"
+    "dsN <- data.table::data.table(commodity = mk(values$NM_ds_commodity), "
+    "unit = mk(values$NM_ds_unit))\n"
+    "resN <- run(dsN, mkgroup(values$NM_r_cs, values$NM_r_vsr, values$NM_r_vs, values$NM_r_ct, "
+    "values$NM_r_vtr, values$NM_r_vt, values$NM_r_svc))"
+)
+
+# footnote_rules: one rich dataset + rule set exercising replace / remove / multi-token /
+# precedence (remove>replace, first-replacement) / NA / "" / trailing-";" / whitespace /
+# conditional-target / transliteration / no-op, applied at once. apply_footnote_rules mutates
+# the dataset in place; res$data is the mutated frame. Unicode lives in the fixture.
+_FOOTNOTE_RULES_PREAMBLE = (
+    "mk <- function(x) as.character(x)\n"
+    "ds <- data.table::data.table(footnotes = mk(values$ds_footnotes), unit = mk(values$ds_unit))\n"
+    "rules <- data.table::data.table(column_source = mk(values$r_cs), "
+    "value_source_raw = mk(values$r_vsr), value_source = mk(values$r_vs), "
+    "column_target = mk(values$r_ct), value_target_raw = mk(values$r_vtr), "
+    "value_target = mk(values$r_vt))\n"
+    "res <- apply_footnote_rules(ds, rules, 'clean', 'whep', 'rules.xlsx', '2026-01-01T00:00:00Z')"
+)
 
 CAPTURES: dict[str, CaptureSpec] = {
     "string_normalization": CaptureSpec(
@@ -361,6 +500,221 @@ CAPTURES: dict[str, CaptureSpec] = {
             "Stage-level run_import_pipeline over the whole corpus (orchestration replicated "
             "inline): the consolidated, canonically-sorted long frame plus the reading / "
             "validation / consolidation diagnostics. Python run_import_pipeline must match."
+        ),
+    ),
+    "matching": CaptureSpec(
+        module="matching",
+        r_sources=(_GENERAL_CONSTANTS, _STRING_NORMALIZATION, _MATCHING_STRATEGY, _MATCHING_VALUES),
+        fixture="synthetic/matching_values_inputs.json",
+        preamble=_MATCHING_PREAMBLE,
+        exports={
+            # Tokenized ;-membership match (incl. wildcard __ANY__ + NA<->NA) and the plain
+            # full-string match over the same current/condition pairs.
+            "match_tokenized": (
+                "match_rule_target_condition_values("
+                "current_values, condition_values, tokenized_target = TRUE)"
+            ),
+            "match_plain": (
+                "match_rule_target_condition_values("
+                "current_values, condition_values, tokenized_target = FALSE)"
+            ),
+            # Match-key encoding: normalized (NA -> na_match_key) and raw (apply_normalization
+            # = FALSE) forms.
+            "encode_key": "encode_rule_match_key(current_values)",
+            "encode_key_raw": "encode_rule_match_key(target_values, apply_normalization = FALSE)",
+            # Target NA <-> placeholder round trip (na_placeholder), and the standalone encode.
+            "encode_target": "encode_target_rule_value(target_values)",
+            "decode_target": "decode_target_rule_value(encode_target_rule_value(target_values))",
+            # Order-preserving, existing-first deduplicating concat merge.
+            "concat_merge": (
+                "concatenate_existing_and_incoming_values(existing_values, incoming_values, '; ')"
+            ),
+            # Element-wise change count (drives multi-pass convergence).
+            "change_count": "count_elementwise_value_changes(before_values, after_values)",
+        },
+        description=(
+            "Rule-engine matching & value merge (23-matching-strategy.R + 23-matching-values.R): "
+            "tokenized ;-membership matching with wildcard __ANY__, NA<->NA folding to "
+            "na_match_key (parity risk #5), na_placeholder target encode/decode, order-preserving "
+            "existing-first concat dedupe, and the element-wise change count — over unicode / NA / "
+            "empty / wildcard / duplicate edge cases."
+        ),
+    ),
+    "target_apply": CaptureSpec(
+        module="target_apply",
+        r_sources=(
+            _GENERAL_CONSTANTS,
+            _STRING_NORMALIZATION,
+            _MATCHING_STRATEGY,
+            _MATCHING_VALUES,
+            _TARGET_APPLY,
+        ),
+        fixture="synthetic/target_apply_inputs.json",
+        preamble=_TARGET_APPLY_PREAMBLE,
+        exports={
+            "A_unit": "dsA$unit",
+            "A_applied": "resA$applied",
+            "A_changed": "resA$changed_value_count",
+            "A_ev_nrow": "as.character(nrow(resA$overwrite_events))",
+            "B_unit": "dsB$unit",
+            "B_applied": "resB$applied",
+            "B_changed": "resB$changed_value_count",
+            "B_ev_nrow": "as.character(nrow(resB$overwrite_events))",
+            "B_ev_row_id": "resB$overwrite_events$row_id",
+            "B_ev_candidate_count": "resB$overwrite_events$candidate_count",
+            "B_ev_unique_candidate_count": "resB$overwrite_events$unique_candidate_count",
+            "B_ev_selected_value": "resB$overwrite_events$selected_value",
+            "B_ev_candidate_values": "resB$overwrite_events$candidate_values",
+            "B_ev_column_source": "resB$overwrite_events$column_source",
+            "B_ev_column_target": "resB$overwrite_events$column_target",
+            "B_ev_dataset_name": "resB$overwrite_events$dataset_name",
+            "B_ev_execution_stage": "resB$overwrite_events$execution_stage",
+            "B_ev_rule_file_identifier": "resB$overwrite_events$rule_file_identifier",
+            "C_notes": "dsC$notes",
+            "C_applied": "resC$applied",
+            "C_changed": "resC$changed_value_count",
+            "C_ev_nrow": "as.character(nrow(resC$overwrite_events))",
+            "D_notes": "dsD$notes",
+            "D_applied": "resD$applied",
+            "D_changed": "resD$changed_value_count",
+            "D_ev_nrow": "as.character(nrow(resD$overwrite_events))",
+        },
+        description=(
+            "apply_target_updates_with_strategy (23-target-apply.R): last_rule_wins fast path "
+            "(unique rows) + condition match and slow path (stable order-column sort, group-last, "
+            "overwrite events only when unique_candidate_count>1, null candidate -> 'NA' paste), "
+            "plus concatenate and wildcard-already-present removal. Functional scatter must match "
+            "R's in-place data.table::set on the mutated column, events table, and change counts."
+        ),
+    ),
+    "schema_validation": CaptureSpec(
+        module="schema_validation",
+        r_sources=(_GENERAL_CONSTANTS, _STAGE_DEFINITIONS, _SCHEMA_VALIDATION),
+        fixture="synthetic/schema_validation_inputs.json",
+        preamble=_SCHEMA_VALIDATION_PREAMBLE,
+        exports={
+            # Dictionary: group count + flattened groups (encodes group order AND within-group
+            # radix/code-point order incl. NA-last).
+            "dict_ngroups": "as.character(length(dict))",
+            "dict_flat_column_source": "dict_flat$column_source",
+            "dict_flat_column_target": "dict_flat$column_target",
+            "dict_flat_value_source_raw": "dict_flat$value_source_raw",
+            "dict_flat_value_target": "dict_flat$value_target",
+            # coerce: canonical column set/order, the source_value_column_present flag, and the
+            # (synthesized-when-absent) value_source column.
+            "cA_columns": "colnames(coercedA)",
+            "cA_source_value_column_present": "coercedA$source_value_column_present",
+            "cA_value_source": "coercedA$value_source",
+            "cA_column_source": "coercedA$column_source",
+            "cB_columns": "colnames(coercedB)",
+            "cB_source_value_column_present": "coercedB$source_value_column_present",
+            "cB_value_source": "coercedB$value_source",
+            # validate_canonical_rules abort-or-not (valid / duplicate-key / missing dataset col).
+            "validate_valid_aborts": "aborts(v_rules)",
+            "validate_duplicate_aborts": "aborts(dup_rules)",
+            "validate_missing_column_aborts": "aborts(mc_rules)",
+        },
+        description=(
+            "Rule schema coercion + canonical validation + dictionary construction "
+            "(23-schema-validation.R): coerce_rule_schema (stage-prefix strip, canonical reorder, "
+            "value_source optional/synthesized, source_value_column_present); "
+            "build_conditional_rule_dictionary grouping by (column_source, column_target) with "
+            "radix/code-point + NA-last within-group order (parity risk #7); and "
+            "validate_canonical_rules duplicate-key / missing-column aborts."
+        ),
+    ),
+    "conditional_group": CaptureSpec(
+        module="conditional_group",
+        r_sources=(
+            _GENERAL_CONSTANTS,
+            _STRING_NORMALIZATION,
+            _STAGE_DEFINITIONS,
+            _MATCHING_STRATEGY,
+            _MATCHING_VALUES,
+            _TARGET_APPLY,
+            _CONDITIONAL_GROUP,
+        ),
+        fixture="synthetic/conditional_group_inputs.json",
+        preamble=_CONDITIONAL_GROUP_PREAMBLE,
+        exports={
+            "M_commodity": "resM$data$commodity",
+            "M_unit": "resM$data$unit",
+            "M_changed": "resM$changed_value_count",
+            "M_changed_columns": "resM$changed_columns",
+            "M_audit_nrow": "as.character(nrow(resM$audit))",
+            "M_audit_column_source": "resM$audit$column_source",
+            "M_audit_value_source_raw": "resM$audit$value_source_raw",
+            "M_audit_value_source_result": "resM$audit$value_source_result",
+            "M_audit_column_target": "resM$audit$column_target",
+            "M_audit_value_target_raw": "resM$audit$value_target_raw",
+            "M_audit_value_target_result": "resM$audit$value_target_result",
+            "M_audit_affected_rows": "resM$audit$affected_rows",
+            "M_audit_dataset_name": "resM$audit$dataset_name",
+            "M_audit_execution_stage": "resM$audit$execution_stage",
+            "M_audit_rule_file_identifier": "resM$audit$rule_file_identifier",
+            "M_audit_execution_timestamp_utc": "resM$audit$execution_timestamp_utc",
+            "SO_commodity": "resS$data$commodity",
+            "SO_unit": "resS$data$unit",
+            "SO_changed": "resS$changed_value_count",
+            "SO_changed_columns": "resS$changed_columns",
+            "SO_audit_nrow": "as.character(nrow(resS$audit))",
+            "TO_commodity": "resT$data$commodity",
+            "TO_unit": "resT$data$unit",
+            "TO_changed": "resT$changed_value_count",
+            "TO_changed_columns": "resT$changed_columns",
+            "TO_audit_nrow": "as.character(nrow(resT$audit))",
+            "NM_commodity": "resN$data$commodity",
+            "NM_unit": "resN$data$unit",
+            "NM_changed": "resN$changed_value_count",
+            "NM_changed_columns": "resN$changed_columns",
+            "NM_audit_nrow": "as.character(nrow(resN$audit))",
+        },
+        description=(
+            "apply_conditional_rule_group (23-conditional-group.R): cartesian source-key join, "
+            "target-condition match on the matched subset, functional source + target scatter, and "
+            "the encoded-NA audit join-back. Covers audit grouping/affected-rows + transliteration "
+            "match (M), source-only rewrite marking only the source column (SO), target-only (TO), "
+            "and no-match (NM). Mutated columns, count, changed_columns, and audit must match."
+        ),
+    ),
+    "footnote_rules": CaptureSpec(
+        module="footnote_rules",
+        r_sources=(
+            _GENERAL_CONSTANTS,
+            _STRING_NORMALIZATION,
+            _STAGE_DEFINITIONS,
+            _MATCHING_STRATEGY,
+            _MATCHING_VALUES,
+            _TARGET_APPLY,
+            _FOOTNOTE_RULES,
+        ),
+        fixture="synthetic/footnote_rules_inputs.json",
+        preamble=_FOOTNOTE_RULES_PREAMBLE,
+        exports={
+            "footnotes": "res$data$footnotes",
+            "unit": "res$data$unit",
+            "changed": "res$changed_value_count",
+            "changed_columns": "res$changed_columns",
+            "overwrite_nrow": "as.character(nrow(res$overwrite_events))",
+            "audit_nrow": "as.character(nrow(res$audit))",
+            "audit_column_source": "res$audit$column_source",
+            "audit_value_source_raw": "res$audit$value_source_raw",
+            "audit_value_source_result": "res$audit$value_source_result",
+            "audit_column_target": "res$audit$column_target",
+            "audit_value_target_raw": "res$audit$value_target_raw",
+            "audit_value_target_result": "res$audit$value_target_result",
+            "audit_affected_rows": "res$audit$affected_rows",
+            "audit_dataset_name": "res$audit$dataset_name",
+            "audit_execution_stage": "res$audit$execution_stage",
+            "audit_rule_file_identifier": "res$audit$rule_file_identifier",
+            "audit_execution_timestamp_utc": "res$audit$execution_timestamp_utc",
+        },
+        description=(
+            "apply_footnote_rules (23-footnote-rules.R): the ;-explode / rule-match / reconstruct "
+            "engine. One rich dataset covering replace, remove, multi-token, precedence "
+            "(remove>replace, first-replacement), NA/empty/trailing-;/whitespace tokens, "
+            "conditional target, transliteration, and no-op. Reconstructed footnotes, mutated "
+            "target column, change count, changed_columns, and the full audit table must match R."
         ),
     ),
 }
