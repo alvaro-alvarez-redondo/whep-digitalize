@@ -48,6 +48,14 @@ _AUDIT_VALIDATION = "r/2-postpro_pipeline/20-data_audit/20-audit-validation.R"
 # the sheet schema-matching heuristic; needs get_canonical_rule_columns from stage-definitions).
 _AUDIT_DIAGNOSTICS = "r/2-postpro_pipeline/21-postpro_utilities/21-diagnostics.R"
 _TEMPLATE_RULES = "r/2-postpro_pipeline/21-postpro_utilities/21-template-rules.R"
+# Multi-pass driver (B6): payload orchestration, runtime-cache payload loading, and the
+# clean/harmonize layer runner + controls/cycle detection + stage-input canonicalization.
+_DIRECTORIES = "r/0-general_pipeline/01-setup/01-directories.R"
+_RUNTIME_CACHE = "r/2-postpro_pipeline/21-postpro_utilities/21-runtime-cache.R"
+_PAYLOAD_APPLICATION = "r/2-postpro_pipeline/23-postpro_rule_engine/23-payload-application.R"
+_STAGE_INPUTS = "r/2-postpro_pipeline/22-clean_harmonize_data/22-stage-inputs.R"
+_CONTROLS_CACHE = "r/2-postpro_pipeline/22-clean_harmonize_data/22-controls-cache.R"
+_LAYER_RUNNER = "r/2-postpro_pipeline/22-clean_harmonize_data/22-layer-runner.R"
 
 # Stage-level (run_import_pipeline) golden: the orchestration body is replicated inline over
 # the whole corpus (R's run_import_pipeline auto-sources via here::here + auto-runs, which the
@@ -304,6 +312,24 @@ _UTILITIES_PREAMBLE = (
     "audit_empty <- data.table::data.table(affected_rows = integer(0))\n"
     "diag_matched <- build_layer_diagnostics('clean', 10L, 10L, audit_matched)\n"
     "diag_empty <- build_layer_diagnostics('clean', 5L, 5L, audit_empty)"
+)
+
+# layer_batch (B6): run the multi-pass clean + harmonize drivers over the committed rule
+# workbooks (clean_rules.xlsx / harmonize_rules.xlsx under fixtures rule_files/). The config
+# points import dirs at those fixtures and disables the runtime cache (build-each-call). Each
+# stage converges in 2 passes (pass 1 rewrites, pass 2 is a no-op -> changed==0).
+_LAYER_BATCH_PREAMBLE = (
+    "mk <- function(x) as.character(x)\n"
+    "config <- list(paths = list(data = list(import = list("
+    "cleaning = file.path(fixtures_dir, 'rule_files/clean'), "
+    "harmonization = file.path(fixtures_dir, 'rule_files/harmonize')))), "
+    "postpro = list(runtime_cache = list(enabled = FALSE)))\n"
+    "dataset <- data.table::data.table(commodity = mk(values$commodity), "
+    "unit = mk(values$unit), value = mk(values$value))\n"
+    "res_clean <- run_rule_stage_layer_batch(dataset, config, 'clean')\n"
+    "diag_clean <- attr(res_clean, 'layer_diagnostics'); mp_clean <- diag_clean$multi_pass\n"
+    "res_harm <- run_rule_stage_layer_batch(dataset, config, 'harmonize')\n"
+    "diag_harm <- attr(res_harm, 'layer_diagnostics'); mp_harm <- diag_harm$multi_pass"
 )
 
 CAPTURES: dict[str, CaptureSpec] = {
@@ -806,6 +832,56 @@ CAPTURES: dict[str, CaptureSpec] = {
             "schema-matching heuristic (guidance sheet skipped), and all-as-text reads keeping "
             "'007'/'1000.0' as strings; plus build_layer_diagnostics matched/unmatched counts, "
             "status, and message for a matched and an empty audit table."
+        ),
+    ),
+    "layer_batch": CaptureSpec(
+        module="layer_batch",
+        r_sources=(
+            _GENERAL_CONSTANTS,
+            _ASSERTIONS,
+            _DIRECTORIES,
+            _STRING_NORMALIZATION,
+            _STAGE_DEFINITIONS,
+            _AUDIT_DIAGNOSTICS,
+            _TEMPLATE_RULES,
+            _RUNTIME_CACHE,
+            _MATCHING_STRATEGY,
+            _MATCHING_VALUES,
+            _TARGET_APPLY,
+            _SCHEMA_VALIDATION,
+            _CONDITIONAL_GROUP,
+            _FOOTNOTE_RULES,
+            _PAYLOAD_APPLICATION,
+            _STAGE_INPUTS,
+            _CONTROLS_CACHE,
+            _LAYER_RUNNER,
+        ),
+        fixture="synthetic/layer_batch_inputs.json",
+        preamble=_LAYER_BATCH_PREAMBLE,
+        exports={
+            "clean_columns": "colnames(res_clean)",
+            "clean_commodity": "res_clean$commodity",
+            "clean_unit": "res_clean$unit",
+            "clean_value": "res_clean$value",
+            "clean_stop_reason": "mp_clean$stop_reason",
+            "clean_passes": "as.character(mp_clean$passes_executed)",
+            "clean_converged": "as.character(mp_clean$converged)",
+            "clean_matched": "as.character(diag_clean$matched_count)",
+            "harm_columns": "colnames(res_harm)",
+            "harm_commodity": "res_harm$commodity",
+            "harm_unit": "res_harm$unit",
+            "harm_value": "res_harm$value",
+            "harm_stop_reason": "mp_harm$stop_reason",
+            "harm_passes": "as.character(mp_harm$passes_executed)",
+            "harm_converged": "as.character(mp_harm$converged)",
+            "harm_matched": "as.character(diag_harm$matched_count)",
+        },
+        description=(
+            "Multi-pass driver (22-layer-runner.R + 23-payload-application.R): run_rule_stage_"
+            "layer_batch for clean and harmonize over committed rule workbooks. Each stage "
+            "rewrites unit on pass 1 and no-ops on pass 2 -> converges (changed_value_count==0) "
+            "in 2 passes. Asserts the converged data, stop_reason, passes_executed, converged, "
+            "and matched_count match R — the full payload composition + convergence loop."
         ),
     ),
 }
