@@ -325,6 +325,13 @@ _UTILITIES_PREAMBLE = (
     "diag_empty <- build_layer_diagnostics('clean', 5L, 5L, audit_empty)"
 )
 
+# read_rule_table CSV branch (DB2): readr::read_csv(col_types = cols(.default = col_character()))
+# maps BOTH "" and the literal "NA" to NA (readr default na = c("", "NA")); the leading-zero code
+# and the quoted comma survive as exact strings. This is the golden the polars CSV read must match.
+_RULE_TABLE_CSV_PREAMBLE = (
+    "rules_csv <- read_rule_table(file.path(fixtures_dir, 'synthetic/rule_table_sample.csv'))"
+)
+
 # layer_batch (B6): run the multi-pass clean + harmonize drivers over the committed rule
 # workbooks (clean_rules.xlsx / harmonize_rules.xlsx under fixtures rule_files/). The config
 # points import dirs at those fixtures and disables the runtime cache (build-each-call). Each
@@ -914,6 +921,25 @@ CAPTURES: dict[str, CaptureSpec] = {
             "schema-matching heuristic (guidance sheet skipped), and all-as-text reads keeping "
             "'007'/'1000.0' as strings; plus build_layer_diagnostics matched/unmatched counts, "
             "status, and message for a matched and an empty audit table."
+        ),
+    ),
+    "rule_table_csv": CaptureSpec(
+        module="rule_table_csv",
+        r_sources=(_GENERAL_CONSTANTS, _STAGE_DEFINITIONS, _TEMPLATE_RULES),
+        preamble=_RULE_TABLE_CSV_PREAMBLE,
+        exports={
+            "columns": "colnames(rules_csv)",
+            "nrow": "as.character(nrow(rules_csv))",
+            "column_source": "rules_csv$column_source",
+            # Both the empty cell and the literal "NA" must read as NA (JSON null).
+            "value_source_raw": "rules_csv$value_source_raw",
+            "value_target_raw": "rules_csv$value_target_raw",
+        },
+        description=(
+            "read_rule_table CSV branch (21-template-rules.R, DB2): readr::read_csv with "
+            "col_character reads a rule CSV all-as-text; readr's default na = c('', 'NA') maps "
+            "both the empty cell and the literal 'NA' to NA, while the leading-zero code '007' and "
+            "the quoted field 'a,b' survive verbatim. The polars read must match byte-for-byte."
         ),
     ),
     "layer_batch": CaptureSpec(
