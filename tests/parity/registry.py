@@ -67,6 +67,8 @@ _STANDARDIZE_ORCHESTRATION = (
 # Postpro diagnostics (C5): clean/harmonize + standardize rule summaries (matched + unmatched).
 _RULE_SUMMARIES = "r/2-postpro_pipeline/25-postpro_diagnostics/25-rule-summaries.R"
 _STANDARDIZE_SUMMARIES = "r/2-postpro_pipeline/25-postpro_diagnostics/25-standardize-summaries.R"
+# Export processed-data: the high-performance TSV writer (data.table::fwrite(sep = "\t")).
+_WRITE_PROCESSED_TABLE = "r/3-export_pipeline/30-processed_data/03-write-processed-table-fast.R"
 
 # Stage-level (run_import_pipeline) golden: the orchestration body is replicated inline over
 # the whole corpus (R's run_import_pipeline auto-sources via here::here + auto-runs, which the
@@ -419,6 +421,29 @@ _DIAGNOSTICS_PREAMBLE = (
     "std_counts <- data.table::data.table(rule_commodity_match_key = mk(values$sm_rule), "
     "unit_source_key = mk(values$sm_unitkey))\n"
     "su <- build_unmatched_standardize_rule_summary(std_catalog, ss, std_counts)"
+)
+
+# export_processed_data: build a harmonize-layer export frame from the fixture (all columns
+# character except `value`, which the audit stage parses to double via readr::parse_double ->
+# as.numeric here), then write it with the real `write_processed_table_fast` (fwrite, sep="\t").
+# The whole TSV is captured as a hex string so the golden is the exact bytes: it pins the eol
+# (fwrite uses the platform newline), the auto-quoting (tab/newline/quote/empty-vs-NA), and the
+# double formatting (15 sig figs, fixed notation, `.0` dropped — this bootstrap runs under
+# scipen=999, like the pipeline). The Python writer must reproduce these bytes exactly.
+_EXPORT_PROCESSED_PREAMBLE = (
+    "mk <- function(x) as.character(x)\n"
+    "dt <- data.table::data.table("
+    "hemisphere = mk(values$hemisphere), continent = mk(values$continent), "
+    "polity = mk(values$polity), commodity = mk(values$commodity), "
+    "variable = mk(values$variable), unit = mk(values$unit), year = mk(values$year), "
+    "value = as.numeric(values$value), notes = mk(values$notes), "
+    "footnotes = mk(values$footnotes), yearbook = mk(values$yearbook), "
+    "document = mk(values$document))\n"
+    "tmp <- tempfile(fileext = '.tsv')\n"
+    "write_processed_table_fast(dt, tmp)\n"
+    "raw_bytes <- readBin(tmp, what = 'raw', n = file.info(tmp)$size)\n"
+    "unlink(tmp)\n"
+    "tsv_hex <- paste(sprintf('%02x', as.integer(raw_bytes)), collapse = '')"
 )
 
 CAPTURES: dict[str, CaptureSpec] = {
@@ -1092,6 +1117,22 @@ CAPTURES: dict[str, CaptureSpec] = {
             "summarize_standardize_rules, and build_unmatched_standardize_rule_summary via the "
             "normalized-key counts branch (an "
             "all-commodity rule matched by counts leaves the specific rule unmatched)."
+        ),
+    ),
+    "export_processed_data": CaptureSpec(
+        module="export_processed_data",
+        r_sources=(_WRITE_PROCESSED_TABLE,),
+        fixture="synthetic/export_processed_inputs.json",
+        preamble=_EXPORT_PROCESSED_PREAMBLE,
+        exports={"tsv_hex": "tsv_hex"},
+        description=(
+            "Processed-data TSV write (30-processed_data/03-write-processed-table-fast.R): "
+            "write_processed_table_fast -> data.table::fwrite(sep = '\\t') over a harmonize-layer "
+            "export frame (character columns + a Float64 value). The entire file is captured as a "
+            "hex string, so the golden is the exact bytes — pinning the platform eol, fwrite's "
+            "auto-quoting (embedded tab / newline / quote, empty-string vs NA), and double "
+            "formatting (15 sig figs, fixed notation under scipen=999, trailing '.0' dropped). "
+            "The polars write_csv-based writer must reproduce these bytes byte-for-byte."
         ),
     ),
 }

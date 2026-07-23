@@ -683,6 +683,45 @@ committed goldens** (real, not skipping). Two gaps found and closed, plus doc dr
 **Result:** Tracks A, B, C are **100% complete** (modules + tests + parity + local gates + green
 CI). Only Track D (export) and integration (E1 → E2 → E3) remain. Full suite **546 tests pass**.
 
+## Track D — export / processed_data — ✅ (2026-07-23)
+
+Ported `r/3-export_pipeline/30-processed_data/` (Track D, first slice):
+
+- `processed_data/layers.py` <- `02-collect-layer-tables.R`: `collect_layer_tables_for_export`
+  takes an explicit `{name: frame}` mapping (no global-env scan — the typed-results divergence),
+  keeps names ending in `_raw/_clean/_normalize/_harmonize`, excludes `_wide_raw` and
+  `_post_processed`, returns them sorted by name.
+- `processed_data/export.py` <- `01/03/04`: `build_processed_export_path`
+  (`normalize_filename(name) + ".tsv"` under `config.paths.data.export.processed`),
+  `write_processed_table` (the `fwrite` analogue), and `export_processed_data`
+  (harmonize-only by default via `config.export_config.export_layers`).
+
+**The real risk was `fwrite` byte-parity**, not the detection logic. Empirically nailed down
+(R 4.6.0) that `data.table::fwrite(sep="\t")` diverges from polars `write_csv(separator="\t")`
+in exactly two ways, both handled so the output is byte-identical:
+
+- **eol.** `fwrite` uses the platform newline (`\r\n` Windows / `\n` unix, per
+  `.Platform$OS.type`); polars defaults to `\n`. `_FWRITE_EOL` mirrors `fwrite`, so the golden
+  (captured from R on the same platform) and the port agree on every platform.
+- **float formatting.** The exported `value` is `Float64` (audit `parse_double`). `fwrite`
+  renders a double **identically to R `as.character()`** (verified 254-value battery) under the
+  pipeline's `scipen=999`: 15 significant figures, fixed notation, trailing `.0` dropped
+  (`1.0`->`1`, `1000.0`->`1000`, `1e16`->`10000000000000000`) — whereas polars keeps `1.0` and
+  goes scientific at 1e16. `_format_double_r` (Decimal, prec=15, ROUND_HALF_EVEN) reproduces it;
+  float columns are stringified before the write. For the finite decimals the pipeline actually
+  produces (parsed inputs × exact unit factors) this is byte-identical to `fwrite`; `fwrite` and
+  `as.character` only ever differ in the 15th digit for *arbitrary* ≥16-sig-fig doubles (raw
+  `runif`-style), which the pipeline never generates (no division introduced).
+
+Golden = the **whole TSV as a hex string** (`export_processed_data` CaptureSpec runs the real
+`write_processed_table_fast`), so the parity test asserts exact bytes — pinning eol, auto-quoting
+(embedded tab/newline/quote, empty-`""` vs NA), UTF-8, and the float format. Committed fixture
+`synthetic/export_processed_inputs.json`.
+
+**Gates:** ruff clean · mypy strict clean (131 files) · **580 tests pass** (was 546; +33 unit in
+`tests/export/test_processed_data.py`, +1 parity) · 106 parity across 21 golden modules.
+**Remaining Track D:** `lists/` (`31-lists`) + export runner wiring (E3).
+
 ## Baseline metrics (autocode)
 
 | metric | value |
