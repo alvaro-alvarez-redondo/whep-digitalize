@@ -116,15 +116,16 @@ All 27 library modules below are **[done]** (Tracks B + C); only the runner wiri
 
 ---
 
-## Stage 3 — export (`whep_digitize.export`) — [scaffold]
+## Stage 3 — export (`whep_digitize.export`) — [processed_data done · lists + runner pending]
 
 Public: `runner.run_export_pipeline(config, result, *, overwrite=True) -> ExportResult`.
-Ports `r/3-export_pipeline/`.
+Ports `r/3-export_pipeline/`. `processed_data/` is done; `lists/` and the runner wiring (E3)
+still raise `StageNotImplementedError`.
 
 | Planned module | Functions to port | R source | Risk |
 |----------------|-------------------|----------|------|
-| `processed_data/layers.py` | `collect_layer_tables_for_export` | `30-.../02-collect-layer-tables.R` | LOW-MED |
-| `processed_data/export.py` | `export_processed_data`, path build, TSV write | `30-.../01,03,04` | LOW-MED |
+| `processed_data/layers.py` **[done]** | `collect_layer_tables_for_export` (name-based detect from an explicit mapping; excludes `_wide_raw`/`_post_processed`; sorted) | `30-.../02-collect-layer-tables.R` | LOW-MED |
+| `processed_data/export.py` **[done]** | `export_processed_data` (harmonize-only default), `build_processed_export_path`, `write_processed_table` (fwrite byte-parity: platform eol + R-`as.character` float format) | `30-.../01,03,04` | LOW-MED |
 | `lists/unique_values.py` | `compute_unique_column_values`, union columns | `31-.../02` | MEDIUM |
 | `lists/merge.py` | identical-layer merging, sheet order | `31-.../03` | MEDIUM |
 | `lists/write.py` | `export_lists`, per-column multi-sheet xlsx | `31-.../04,01` | MED-HIGH |
@@ -136,7 +137,7 @@ Ports `r/3-export_pipeline/`.
 `tests/conftest.py` provides `project_dir`, `config`, `sample_long_df` fixtures (the
 analogue of `tests/test_helper.R`). Per-stage suites mirror the package layout:
 `tests/general/` [done], `tests/contracts/` [done], `tests/ingest/` [done],
-`tests/postpro/` [done], `tests/parity/` [done]; `tests/export/` [pending] (Track D).
+`tests/postpro/` [done], `tests/parity/` [done]; `tests/export/` [processed_data done] (Track D).
 Golden parity fixtures live under `tests/golden/` (gitignored; regenerated from R). Mark
-parity tests `@pytest.mark.parity`. Current totals: **546 tests pass** (105 parity across
-19 committed goldens).
+parity tests `@pytest.mark.parity`. Current totals: **580 tests pass** (106 parity across
+21 golden modules).
