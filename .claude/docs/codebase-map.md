@@ -76,10 +76,13 @@ sort). Stage-level parity vs R verified on the frozen corpus. Ports `r/1-import_
 
 ---
 
-## Stage 2 — postpro (`whep_digitize.postpro`) — [scaffold]
+## Stage 2 — postpro (`whep_digitize.postpro`) — [modules done · runner pending (E1)]
 
 Public: `runner.run_postpro_pipeline(raw, config, dataset_name=None, options=None) -> PostproResult`.
 9-step orchestration. Ports `r/2-postpro_pipeline/`. The **rule engine** is the critical path.
+All 27 library modules below are **[done]** (Tracks B + C); only the runner wiring
+(`run_postpro_pipeline`, integration step **E1**) remains — it still raises
+`StageNotImplementedError`.
 
 | Planned module | Functions to port | R source | Risk |
 |----------------|-------------------|----------|------|
