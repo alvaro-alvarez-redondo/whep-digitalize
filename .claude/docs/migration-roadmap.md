@@ -104,7 +104,10 @@ and this roadmap.
 
 **Exit (met):** `whep-digitize bootstrap` builds the tree; gates green.
 
-### Phase 1 — Ingest (Stage 1)
+### Phase 1 — Ingest (Stage 1) — ✅ DONE
+
+All modules ported, runner wired, and stage-level parity green on the frozen corpus
+(`run_import_pipeline` returns a parity-correct `ImportResult`; sequential == parallel).
 
 **Goal:** `run_import_pipeline(config) -> ImportResult` producing the validated long frame
 with parity to R on the fixture corpus.
@@ -124,7 +127,10 @@ Milestones (bottom-up, mostly parallel):
 **Exit:** ingest runner returns a parity-correct `ImportResult` on the fixture corpus;
 sequential and (later) parallel produce identical output.
 
-### Phase 2 — Postpro non-engine
+### Phase 2 — Postpro non-engine — ✅ DONE (Track C)
+
+Audit, utilities, standardize-units, and diagnostics all ported with module + parity tests
+(C1–C5 landed 2026-07-22/23). Exit met: audit + standardize + diagnostics parity-correct.
 
 **Goal:** everything in Stage 2 except the rule engine + multi-pass driver. All parallel.
 - **2a Audit** (`audit`, `validation`, `config`, `export`) — value→Float64 + retained
@@ -136,7 +142,11 @@ sequential and (later) parallel produce identical output.
 
 **Exit:** audit + standardize + diagnostics each parity-correct against fixtures.
 
-### Phase 3 — Postpro rule engine + multi-pass (critical path)
+### Phase 3 — Postpro rule engine + multi-pass (critical path) — ✅ DONE (Track B)
+
+All rule-engine modules + the clean/harmonize multi-pass driver ported (B1–B6). Exit met: clean
+and harmonize layers parity-correct on rule fixtures, including multi-pass convergence and
+content-hash cycle detection. (The postpro **runner** that calls this — E1 — is Phase 5.)
 
 **Goal:** the algorithmic heart. Bottom-up:
 - **3a** `matching_strategy` → `matching_values` (HIGH) → `target_apply` (HIGH).

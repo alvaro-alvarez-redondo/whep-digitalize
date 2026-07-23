@@ -659,6 +659,30 @@ Track C (postpro non-engine).**
 2 parity). **Track C (postpro non-engine) COMPLETE.** E1 (postpro 9-step runner) is now unblocked
 (B6 ✓, C1 ✓, C2 ✓, C4 ✓, C5 ✓).
 
+## Track C completion audit — ✅ (2026-07-23)
+
+Comprehensive gap analysis of everything up to and including Track C against the roadmap,
+`session-prompts.md`, and `codebase-map.md`. Verified (not by status flags alone): **all 27
+postpro R modules + all Stage-1 modules ported**; no scaffold remnants in any Track A/B/C module
+(the only `StageNotImplementedError`s are E1 postpro-runner + Track D export, both correctly
+out of scope); every done module has unit + parity coverage; **104 parity tests pass against 19
+committed goldens** (real, not skipping). Two gaps found and closed, plus doc drift:
+
+- **DB1 (CI, PR #10):** the `quality` workflow hung to its 6h timeout on every run while passing
+  locally. Root cause was a real latent bug in Track A `ingest/transform/processing.py` — a
+  default-`fork` `ProcessPoolExecutor` deadlocking against polars' Rayon thread pool on Linux.
+  Fixed by pinning a `spawn` context (+ `timeout-minutes: 20` backstop). **CI now green in ~20s**
+  across Python 3.11/3.12/3.13 — the first successful CI run in the project.
+- **DB2 (Track C / C2, PR #11):** `read_rule_table`'s `.csv` branch kept the literal `"NA"` as a
+  string, diverging from R `readr` (`na = c("", "NA")`). Fixed with `null_values=("", "NA")`;
+  added a committed CSV fixture, an R golden (`rule_table_csv` CaptureSpec), a parity test, and a
+  unit test. The deferred-bugs list is now **empty**.
+- **Docs:** codebase-map Stage 2 header (`[scaffold]` → modules done / runner pending E1);
+  migration-roadmap Phases 1–3 marked ✅ DONE.
+
+**Result:** Tracks A, B, C are **100% complete** (modules + tests + parity + local gates + green
+CI). Only Track D (export) and integration (E1 → E2 → E3) remain. Full suite **546 tests pass**.
+
 ## Baseline metrics (autocode)
 
 | metric | value |
