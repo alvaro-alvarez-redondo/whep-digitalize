@@ -64,6 +64,9 @@ _STANDARDIZE_AGGREGATION = "r/2-postpro_pipeline/24-standardize_units/24-standar
 _STANDARDIZE_ORCHESTRATION = (
     "r/2-postpro_pipeline/24-standardize_units/24-standardize-orchestration.R"
 )
+# Postpro diagnostics (C5): clean/harmonize + standardize rule summaries (matched + unmatched).
+_RULE_SUMMARIES = "r/2-postpro_pipeline/25-postpro_diagnostics/25-rule-summaries.R"
+_STANDARDIZE_SUMMARIES = "r/2-postpro_pipeline/25-postpro_diagnostics/25-standardize-summaries.R"
 
 # Stage-level (run_import_pipeline) golden: the orchestration body is replicated inline over
 # the whole corpus (R's run_import_pipeline auto-sources via here::here + auto-runs, which the
@@ -379,6 +382,36 @@ _STANDARDIZE_AGG_PREAMBLE = (
     "unit_factor_effective = as.numeric(values$m_eff))\n"
     "audit <- data.table::as.data.table(build_standardize_layer_audit("
     "layer_rules, mrc, values$r_file[[1]]))[order(commodity_key)]"
+)
+
+# diagnostics (C5): clean matched summary (value_source/target from *_result) + unmatched
+# (anti-join), and standardize matched summary + unmatched via the normalized-key counts branch
+# (an all-commodity rule matched by counts leaves the specific wheat/tonne rule unmatched).
+_DIAGNOSTICS_PREAMBLE = (
+    "mk <- function(x) as.character(x)\n"
+    "clean_audit <- data.table::data.table(loop = as.integer(values$ca_loop), "
+    "rule_file_identifier = mk(values$ca_rf), column_source = mk(values$ca_cs), "
+    "value_source_raw = mk(values$ca_vsr), value_source_result = mk(values$ca_vsres), "
+    "column_target = mk(values$ca_ct), value_target_raw = mk(values$ca_vtr), "
+    "value_target_result = mk(values$ca_vtres), affected_rows = as.integer(values$ca_aff))\n"
+    "cs <- summarize_stage_rules(clean_audit, 'clean')\n"
+    "clean_catalog <- data.table::data.table(rule_file_identifier = mk(values$cc_rf), "
+    "column_source = mk(values$cc_cs), value_source_raw = mk(values$cc_vsr), "
+    "value_source = mk(values$cc_vs), column_target = mk(values$cc_ct), "
+    "value_target_raw = mk(values$cc_vtr), value_target = mk(values$cc_vt))\n"
+    "cu <- build_unmatched_rule_summary(clean_catalog, cs)\n"
+    "std_audit <- data.table::data.table(rule_file_identifier = mk(values$sa_rf), "
+    "commodity_key = mk(values$sa_commodity), unit_source = mk(values$sa_source), "
+    "unit_target = mk(values$sa_target), unit_factor = as.numeric(values$sa_factor), "
+    "unit_offset = as.numeric(values$sa_offset), affected_rows = as.integer(values$sa_aff))\n"
+    "ss <- summarize_standardize_rules(std_audit)\n"
+    "std_catalog <- data.table::data.table(rule_file_identifier = mk(values$sc_rf), "
+    "commodity_key = mk(values$sc_commodity), unit_source = mk(values$sc_source), "
+    "unit_target = mk(values$sc_target), unit_factor = as.numeric(values$sc_factor), "
+    "unit_offset = as.numeric(values$sc_offset))\n"
+    "std_counts <- data.table::data.table(rule_commodity_match_key = mk(values$sm_rule), "
+    "unit_source_key = mk(values$sm_unitkey))\n"
+    "su <- build_unmatched_standardize_rule_summary(std_catalog, ss, std_counts)"
 )
 
 CAPTURES: dict[str, CaptureSpec] = {
@@ -996,6 +1029,43 @@ CAPTURES: dict[str, CaptureSpec] = {
             "prepared rules with matched-rule counts (all-commodity rule attributed to each "
             "applied commodity). Both sorted; asserts the aggregated values + the audit "
             "commodity/affected/effective/target match R."
+        ),
+    ),
+    "diagnostics": CaptureSpec(
+        module="diagnostics",
+        r_sources=(
+            _GENERAL_CONSTANTS,
+            _STRING_NORMALIZATION,
+            _RULE_SUMMARIES,
+            _STANDARDIZE_SUMMARIES,
+        ),
+        fixture="synthetic/diagnostics_inputs.json",
+        preamble=_DIAGNOSTICS_PREAMBLE,
+        exports={
+            "cs_loop": "cs$loop",
+            "cs_affected": "cs$affected_rows",
+            "cs_value_source": "cs$value_source",
+            "cs_value_target": "cs$value_target",
+            "cs_column_target": "cs$column_target",
+            "cu_nrow": "as.character(nrow(cu))",
+            "cu_column_source": "cu$column_source",
+            "cu_value_source_raw": "cu$value_source_raw",
+            "cu_affected": "as.character(cu$affected_rows)",
+            "ss_affected": "as.character(ss$affected_rows)",
+            "ss_commodity": "ss$commodity_key",
+            "ss_unit_target": "ss$unit_target",
+            "su_nrow": "as.character(nrow(su))",
+            "su_commodity": "su$commodity_key",
+            "su_unit_source": "su$unit_source",
+            "su_affected": "as.character(su$affected_rows)",
+        },
+        description=(
+            "Postpro diagnostics summaries (25-rule-summaries.R + 25-standardize-summaries.R): "
+            "summarize_stage_rules (value_source/target filled from *_result), "
+            "build_unmatched_rule_summary (anti-join with NA-matching), "
+            "summarize_standardize_rules, and build_unmatched_standardize_rule_summary via the "
+            "normalized-key counts branch (an "
+            "all-commodity rule matched by counts leaves the specific rule unmatched)."
         ),
     ),
 }

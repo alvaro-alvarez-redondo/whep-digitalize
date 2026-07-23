@@ -106,10 +106,10 @@ Public: `runner.run_postpro_pipeline(raw, config, dataset_name=None, options=Non
 | `standardize_units/rules_setup.py` **[done]** | aliasing, validation, `prepare_standardize_rules` (xlsx readers → C4) | `24-rules-setup.R` | MEDIUM |
 | `standardize_units/aggregation.py` **[done]** | duplicate-group sum (all-NA→NA), idempotent | `24-standardize-aggregation.R` | MEDIUM |
 | `standardize_units/orchestration.py` **[done]** | `run_standardize_units_layer_batch` + rule readers + audit, `StandardizeLayerResult` | `24-standardize-orchestration.R` | MEDIUM |
-| `diagnostics/preflight.py` | `collect_postpro_preflight`, `assert_postpro_preflight` | `25-preflight.R` | LOW |
-| `diagnostics/output.py` | `persist_postpro_audit`, overwrite subset | `25-diagnostics-output.R` | MEDIUM |
-| `diagnostics/rule_summaries.py` | clean/harmonize matched + unmatched summaries | `25-rule-summaries.R` | LOW-MED |
-| `diagnostics/standardize_summaries.py` | standardize summaries (normalized-key branch) | `25-standardize-summaries.R` | LOW-MED |
+| `diagnostics/preflight.py` **[done]** | `collect_postpro_preflight`, `assert_postpro_preflight` | `25-preflight.R` | LOW |
+| `diagnostics/output.py` **[done]** | `build_postpro_diagnostics`, `persist_postpro_audit`, overwrite subset (group-by row + join), multi-sheet xlsx | `25-diagnostics-output.R` | MEDIUM |
+| `diagnostics/rule_summaries.py` **[done]** | clean/harmonize matched + unmatched summaries (null-safe anti-join) | `25-rule-summaries.R` | LOW-MED |
+| `diagnostics/standardize_summaries.py` **[done]** | standardize summaries (normalized-key counts branch) | `25-standardize-summaries.R` | LOW-MED |
 
 ---
 

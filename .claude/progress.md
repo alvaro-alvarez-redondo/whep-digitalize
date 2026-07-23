@@ -629,6 +629,36 @@ rule readers deferred from C3).
 2 parity). **Track C complete: audit + utilities + standardize (core + agg/orchestration) done;
 diagnostics (C5) remains.** E1 (postpro 9-step runner) now needs only **C5**.
 
+## Phase 2 — postpro diagnostics (C5) — ✅ (2026-07-23)
+
+`postpro/diagnostics/{preflight,rule_summaries,standardize_summaries,output}.py` (`25-preflight.R`
++ `25-rule-summaries.R` + `25-standardize-summaries.R` + `25-diagnostics-output.R`) — **completes
+Track C (postpro non-engine).**
+
+- **`preflight.py`** — `collect_postpro_preflight` (rule-dir existence, clean/harmonize file-naming
+  patterns, expected dataset columns) → `PreflightResult`; `assert_postpro_preflight` raises
+  `WhepError` on failure.
+- **`rule_summaries.py`** — `summarize_stage_rules` (value_source/target filled from the `*_result`
+  columns; affected NA→0; nulls-last sort), `build_stage_rule_catalog_from_payloads`, and
+  `build_unmatched_rule_summary`. Shared `_anti_join_null_safe` folds null keys to a sentinel
+  before anti-joining — **R data.table joins match NA↔NA but polars joins do not** (parity risk).
+- **`standardize_summaries.py`** — `build_standardize_rule_catalog`, `summarize_standardize_rules`,
+  and `build_unmatched_standardize_rule_summary` with the normalized-key counts branch (an
+  `all commodity` rule matched via counts leaves the specific rule reported unmatched).
+- **`output.py`** — `build_postpro_diagnostics` (three stage summaries),
+  `build_last_rule_wins_overwrite_subset` (group-by 1-based row_id → collapse columns/files/stages
+  → join final-stage values), and `persist_postpro_audit` → multi-sheet xlsx per stage
+  (`matched_rules` + `unmatched_rules`) + the overwrite workbook, via openpyxl.
+- **Parity:** new `diagnostics` `CaptureSpec` (16 exports) + `diagnostics_inputs.json` fixture.
+  `test_diagnostics_parity.py` matches R on clean summarize + unmatched anti-join and standardize
+  summarize + unmatched counts branch. Unit suite `tests/postpro/test_diagnostics.py` mirrors the R
+  testthat cases (preflight naming/columns/assert, summaries, catalogs, overwrite subset, and
+  `persist_postpro_audit` writing files + sheets).
+
+**Gates:** ruff + ruff-format + mypy strict clean (127 files) · **544 tests pass** (+14: 12 unit +
+2 parity). **Track C (postpro non-engine) COMPLETE.** E1 (postpro 9-step runner) is now unblocked
+(B6 ✓, C1 ✓, C2 ✓, C4 ✓, C5 ✓).
+
 ## Baseline metrics (autocode)
 
 | metric | value |
