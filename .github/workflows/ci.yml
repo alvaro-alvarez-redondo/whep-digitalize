@@ -6,8 +6,13 @@ on:
   pull_request:
 
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Cancel superseded runs only for pull requests (a new push to a PR obsoletes the old run).
+  # Pushes to a branch — especially main — always run to completion, so every commit on main
+  # gets a conclusive check. Previously `cancel-in-progress: true` applied to main too: a burst
+  # of merges made each main push cancel the one before it ("Canceling since a higher priority
+  # waiting request for ci-<ref> exists"), leaving main without a green run.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   quality:
