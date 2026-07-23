@@ -19,7 +19,7 @@ see [constants-and-options.md](constants-and-options.md).
 | `options.py` | `RuntimeOptions` (pydantic-settings; `WHEP_*` env) | `whep.*` options | done |
 | `directories.py` | `create_required_directories(config)`; `ensure_directories_exist`; `delete_directory_if_exists` | `01-directories.R` | done |
 | `paths.py` | `project_root(start=None)` (the `here::here()` analogue) | `here` | done |
-| `errors.py` | `WhepError`, `ConfigurationError`, `ValidationError`, `ContractError`, `StageNotImplementedError` | `cli_abort` | done |
+| `errors.py` | `WhepError`, `ConfigurationError`, `ValidationError`, `ContractError` | `cli_abort` | done |
 | `runner.py` | `run_general_pipeline(dataset_name, root) -> Config` | `run_general_pipeline.R` | done |
 
 ### `general.helpers` — [done]
@@ -76,13 +76,14 @@ sort). Stage-level parity vs R verified on the frozen corpus. Ports `r/1-import_
 
 ---
 
-## Stage 2 — postpro (`whep_digitize.postpro`) — [modules done · runner pending (E1)]
+## Stage 2 — postpro (`whep_digitize.postpro`) — [done]
 
-Public: `runner.run_postpro_pipeline(raw, config, dataset_name=None, options=None) -> PostproResult`.
-9-step orchestration. Ports `r/2-postpro_pipeline/`. The **rule engine** is the critical path.
-All 27 library modules below are **[done]** (Tracks B + C); only the runner wiring
-(`run_postpro_pipeline`, integration step **E1**) remains — it still raises
-`StageNotImplementedError`.
+Public: `runner.run_postpro_pipeline(raw, config, dataset_name=None, options=None) -> PostproResult`
+(**wired**: audit → resolve output roots → templates → collect-preflight → assert-preflight →
+clean → standardize → harmonize → persist; each layer canonically sorted). Stage-level parity vs
+R verified on the frozen corpus, incl. multi-pass pass counts (`tests/parity/test_postpro_stage_parity.py`).
+Ports `r/2-postpro_pipeline/`. The **rule engine** is the critical path. All 27 library modules
+below are **[done]** (Tracks B + C).
 
 | Planned module | Functions to port | R source | Risk |
 |----------------|-------------------|----------|------|

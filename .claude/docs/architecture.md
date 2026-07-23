@@ -78,7 +78,6 @@ a stage can be built and parity-tested against fixtures as long as it honors its
 | `ImportResult` | `list(data, wide_raw, diagnostics)` | `data`/`wide_raw` are `pl.DataFrame`; diagnostics typed |
 | `PostproResult` | harmonized dt + `attr(pipeline_diagnostics)` + `attr(stage_*)` | three layer frames + typed diagnostics |
 | `ExportResult` | `list(processed_paths, lists_paths)` | both non-empty `Mapping[str, Path]` (`assert_export_paths_contract`) |
-| `StageNotImplementedError` | — | raised by not-yet-migrated stage runners |
 
 ## Deliberate divergences from R (Python-native)
 

@@ -1,4 +1,4 @@
-"""Tests for cross-stage contracts and the not-yet-migrated postpro-runner stub."""
+"""Tests for cross-stage contracts and the wired postpro-runner result shape."""
 
 from __future__ import annotations
 
@@ -11,10 +11,12 @@ from whep_digitize.contracts import (
     ExportResult,
     ImportDiagnostics,
     ImportResult,
+    PostproResult,
     assert_export_paths_contract,
 )
 from whep_digitize.general.config import Config
-from whep_digitize.general.errors import ContractError, StageNotImplementedError
+from whep_digitize.general.directories import create_required_directories
+from whep_digitize.general.errors import ContractError, WhepError
 from whep_digitize.postpro.runner import run_postpro_pipeline
 
 
@@ -42,6 +44,26 @@ def test_assert_export_paths_contract_rejects_empty() -> None:
         assert_export_paths_contract(result)
 
 
-def test_postpro_stage_pending(config: Config) -> None:
-    with pytest.raises(StageNotImplementedError):
-        run_postpro_pipeline(pl.DataFrame({"value": [1.0]}), config)
+def test_run_postpro_pipeline_returns_result(config: Config, sample_long_df: pl.DataFrame) -> None:
+    create_required_directories(config)  # preflight needs the rule dirs to exist
+    result = run_postpro_pipeline(sample_long_df, config)
+
+    assert isinstance(result, PostproResult)
+    # No rule files -> clean/harmonize are single-pass no-ops; the frames pass through.
+    assert result.clean.height == sample_long_df.height
+    assert result.normalize.height == sample_long_df.height
+    assert result.harmonize.height == sample_long_df.height
+    # The audit stage coerces the value column to Float64.
+    assert result.harmonize.schema["value"] == pl.Float64
+    # Multi-pass diagnostics are populated for both rule stages.
+    assert result.diagnostics.clean.multi_pass is not None
+    assert result.diagnostics.harmonize.multi_pass is not None
+    # The persisted audit workbook paths are recorded in the diagnostics outputs mapping.
+    assert "clean_audit" in result.diagnostics.outputs
+
+
+def test_run_postpro_pipeline_aborts_on_missing_columns(config: Config) -> None:
+    create_required_directories(config)
+    with pytest.raises(WhepError):
+        # Missing the required unit/commodity columns -> preflight fails.
+        run_postpro_pipeline(pl.DataFrame({"value": ["1"]}), config)

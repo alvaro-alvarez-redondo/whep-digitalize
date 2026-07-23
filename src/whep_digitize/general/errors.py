@@ -26,25 +26,3 @@ class ValidationError(WhepError):
 
 class ContractError(WhepError):
     """Raised when a stage output violates its documented cross-stage contract."""
-
-
-class StageNotImplementedError(WhepError, NotImplementedError):
-    """Raised by a pipeline stage that has been scaffolded but not yet migrated.
-
-    Carries a pointer to the migration roadmap so partial runs fail loudly and
-    informatively rather than silently.
-    """
-
-    def __init__(self, stage: str, r_source: str) -> None:
-        """Initialize with the stage name and the R source module it ports.
-
-        Args:
-            stage: Human-readable stage/module name (e.g. ``"ingest"``).
-            r_source: The R source path this Python module migrates.
-        """
-        self.stage = stage
-        self.r_source = r_source
-        super().__init__(
-            f"stage '{stage}' is not yet migrated (ports {r_source}). "
-            f"See .claude/docs/migration-roadmap.md for status and next steps."
-        )

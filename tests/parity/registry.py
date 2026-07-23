@@ -496,6 +496,80 @@ _EXPORT_LISTS_PREAMBLE = (
     "}"
 )
 
+# postpro_stage: the full run_postpro_pipeline_batch DATA path over the frozen import output
+# (postpro_stage_input.json is the verified import_stage frame; import parity guarantees it equals
+# R's byte-for-byte, so it is a legitimate frozen input for both sides). Replicates the nine-step
+# orchestration's data effects — the audit value-parse (readr::parse_double, invalid rows retained),
+# then clean -> standardize -> harmonize, each canonically sorted before feeding the next. Rule dirs
+# point at committed postpro-stage fixtures (clean_ rewrites milk's unit; harmonize_ rewrites date's
+# unit, keyed on the POST-standardize value — proving harmonize runs on the normalized frame).
+# There are no standardize rules, yet the engine still folds numeric unit prefixes into value.
+# Diagnostics are read from the UNSORTED layer result (attribute-independent of the sort). Both
+# clean and harmonize converge in two passes. The Python run_postpro_pipeline must match all of it.
+_POSTPRO_STAGE_LAYERS = (
+    ("clean", "clean_dt"),
+    ("normalize", "normalize_dt"),
+    ("harmonize", "harmonize_dt"),
+)
+_POSTPRO_STAGE_COLUMNS = (
+    "hemisphere",
+    "continent",
+    "polity",
+    "commodity",
+    "variable",
+    "unit",
+    "year",
+    "value",
+    "notes",
+    "footnotes",
+    "yearbook",
+    "document",
+)
+_POSTPRO_STAGE_EXPORTS: dict[str, str] = {
+    **{f"{layer}_columns": f"colnames({var})" for layer, var in _POSTPRO_STAGE_LAYERS},
+    **{f"{layer}_nrow": f"as.character(nrow({var}))" for layer, var in _POSTPRO_STAGE_LAYERS},
+    **{
+        f"{layer}_{column}": f"{var}[['{column}']]"
+        for layer, var in _POSTPRO_STAGE_LAYERS
+        for column in _POSTPRO_STAGE_COLUMNS
+    },
+    "clean_stop_reason": "clean_mp$stop_reason",
+    "clean_passes": "as.character(clean_mp$passes_executed)",
+    "clean_converged": "as.character(clean_mp$converged)",
+    "clean_matched": "as.character(clean_diag$matched_count)",
+    "harmonize_stop_reason": "harm_mp$stop_reason",
+    "harmonize_passes": "as.character(harm_mp$passes_executed)",
+    "harmonize_converged": "as.character(harm_mp$converged)",
+    "harmonize_matched": "as.character(harm_diag$matched_count)",
+}
+_POSTPRO_STAGE_PREAMBLE = (
+    "mk <- function(x) as.character(x)\n"
+    "raw <- data.table::data.table(\n"
+    "  hemisphere = mk(values$hemisphere), continent = mk(values$continent),\n"
+    "  polity = mk(values$polity), commodity = mk(values$commodity),\n"
+    "  variable = mk(values$variable), unit = mk(values$unit), year = mk(values$year),\n"
+    "  value = mk(values$value), notes = mk(values$notes), footnotes = mk(values$footnotes),\n"
+    "  yearbook = mk(values$yearbook), document = mk(values$document))\n"
+    "audited <- data.table::copy(raw)\n"
+    "audited[, value := suppressWarnings(readr::parse_double(as.character(value)))]\n"
+    "tmp_root <- tempfile('whep_pp_stage_')\n"
+    "dir.create(tmp_root, recursive = TRUE, showWarnings = FALSE)\n"
+    "config <- list(paths = list(data = list(\n"
+    "  import = list(\n"
+    "    cleaning = file.path(fixtures_dir, 'rule_files_postpro/clean'),\n"
+    "    harmonization = file.path(fixtures_dir, 'rule_files_postpro/harmonize'),\n"
+    "    standardization = file.path(tmp_root, 'standardization')),\n"
+    "  audit = list(templates_dir = file.path(tmp_root, 'templates')))),\n"
+    "  postpro = list(runtime_cache = list(enabled = FALSE)))\n"
+    "clean_res <- run_cleaning_layer_batch(audited, config, dataset_name = 'whep_data_raw')\n"
+    "clean_diag <- attr(clean_res, 'layer_diagnostics'); clean_mp <- clean_diag$multi_pass\n"
+    "clean_dt <- sort_pipeline_stage_dt(clean_res)\n"
+    "normalize_dt <- sort_pipeline_stage_dt(run_standardize_units_layer_batch(clean_dt, config))\n"
+    "harm_res <- run_harmonize_layer_batch(normalize_dt, config, dataset_name = 'whep_data_raw')\n"
+    "harm_diag <- attr(harm_res, 'layer_diagnostics'); harm_mp <- harm_diag$multi_pass\n"
+    "harmonize_dt <- sort_pipeline_stage_dt(harm_res)"
+)
+
 CAPTURES: dict[str, CaptureSpec] = {
     "string_normalization": CaptureSpec(
         module="string_normalization",
@@ -1200,6 +1274,49 @@ CAPTURES: dict[str, CaptureSpec] = {
             "'footnotes' is dropped), and the identical-layer merge grouping + fixed sheet order "
             "per column (e.g. continent -> raw + clean_normalize_harmonize; commodity -> "
             "raw_clean + normalize_harmonize; unit -> raw_clean_normalize_harmonize)."
+        ),
+    ),
+    "postpro_stage": CaptureSpec(
+        module="postpro_stage",
+        r_sources=(
+            _GENERAL_CONSTANTS,
+            _ASSERTIONS,
+            _DATA_TABLE,
+            _DIRECTORIES,
+            _SORTING,
+            _STRING_NORMALIZATION,
+            _NUMERIC_COERCION,
+            _STAGE_DEFINITIONS,
+            _AUDIT_DIAGNOSTICS,
+            _TEMPLATE_RULES,
+            _RUNTIME_CACHE,
+            _MATCHING_STRATEGY,
+            _MATCHING_VALUES,
+            _TARGET_APPLY,
+            _SCHEMA_VALIDATION,
+            _CONDITIONAL_GROUP,
+            _FOOTNOTE_RULES,
+            _PAYLOAD_APPLICATION,
+            _STAGE_INPUTS,
+            _CONTROLS_CACHE,
+            _LAYER_RUNNER,
+            _STANDARDIZE_RULES_SETUP,
+            _STANDARDIZE_ENGINE,
+            _STANDARDIZE_AGGREGATION,
+            _STANDARDIZE_ORCHESTRATION,
+        ),
+        fixture="synthetic/postpro_stage_input.json",
+        preamble=_POSTPRO_STAGE_PREAMBLE,
+        exports=_POSTPRO_STAGE_EXPORTS,
+        description=(
+            "Stage-level run_postpro_pipeline over the frozen import output (orchestration "
+            "replicated inline): audit value-parse -> clean -> standardize -> harmonize, each "
+            "canonically sorted. Asserts every column of the clean / normalize / harmonize frames "
+            "plus the clean & harmonize multi-pass diagnostics (stop_reason / passes_executed / "
+            "converged / matched_count) match R. clean_ rewrites milk's unit (2 passes, 69 "
+            "matched); the engine folds the '1000 ' unit prefix into value with no standardize "
+            "rules; harmonize_ rewrites date's post-standardize unit (2 passes, 45 matched), "
+            "proving harmonize runs on the standardized frame."
         ),
     ),
 }

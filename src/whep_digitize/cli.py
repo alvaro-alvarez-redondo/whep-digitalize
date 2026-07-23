@@ -1,16 +1,14 @@
 """Command-line interface (``whep-digitize``).
 
 A thin :mod:`typer` front-end over :func:`whep_digitize.pipeline.run_pipeline` and the
-Stage-0 bootstrap. During the foundation phase, ``run`` executes what is implemented and
-reports the first pending stage cleanly.
+Stage-0 bootstrap.
 """
 
 from __future__ import annotations
 
 import typer
 
-from whep_digitize.general.errors import StageNotImplementedError
-from whep_digitize.general.helpers.console import alert_success, alert_warning, get_console
+from whep_digitize.general.helpers.console import alert_success, get_console
 from whep_digitize.general.runner import run_general_pipeline
 from whep_digitize.pipeline import run_pipeline
 
@@ -24,10 +22,7 @@ def run(
     dataset: str | None = None,
 ) -> None:
     """Run the full pipeline (general -> ingest -> postpro -> export)."""
-    try:
-        run_pipeline(show_view=show_view, dataset_name=dataset)
-    except StageNotImplementedError as exc:
-        alert_warning(f"pipeline stopped at a stage still being migrated: {exc}")
+    run_pipeline(show_view=show_view, dataset_name=dataset)
 
 
 @app.command()

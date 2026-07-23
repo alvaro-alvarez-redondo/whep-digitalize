@@ -13,8 +13,8 @@ whep-digitize bootstrap    # Stage 0 only: build config + create dirs
 ```
 
 Unlike the R pipeline, **importing a module never runs anything** — stages are explicit
-calls. During the foundation phase, `run` executes Stage 0 then stops at `ingest` with a
-`StageNotImplementedError` (the CLI reports it cleanly).
+calls. All four stages (general → ingest → postpro → export) are implemented and wired, so
+`run` executes the full pipeline end-to-end.
 
 ## Environment (this Windows host)
 
