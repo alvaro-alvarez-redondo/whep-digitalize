@@ -1,0 +1,37 @@
+{
+  "ca_loop": ["1", "2"],
+  "ca_rf": ["clean_rules.csv", "clean_rules.csv"],
+  "ca_cs": ["commodity", "commodity"],
+  "ca_vsr": ["wheat", "rice"],
+  "ca_vsres": ["wheat_clean", "rice_clean"],
+  "ca_ct": ["unit", "variable"],
+  "ca_vtr": ["kg", "kg"],
+  "ca_vtres": ["kilogram", "gram"],
+  "ca_aff": ["5", "3"],
+
+  "cc_rf": ["clean_rules.csv", "clean_rules.csv", "clean_rules.csv"],
+  "cc_cs": ["commodity", "commodity", "polity"],
+  "cc_vsr": ["wheat", "rice", "spain"],
+  "cc_vs": ["wheat", "rice", "spain"],
+  "cc_ct": ["unit", "variable", "continent"],
+  "cc_vtr": ["kg", "kg", "eu"],
+  "cc_vt": ["kg", "kg", "eu"],
+
+  "sa_rf": ["standardize_units_rules.xlsx"],
+  "sa_commodity": ["all commodity"],
+  "sa_source": ["kg"],
+  "sa_target": ["t"],
+  "sa_factor": ["0.001"],
+  "sa_offset": ["0"],
+  "sa_aff": ["3"],
+
+  "sc_rf": ["standardize_units_rules.xlsx", "standardize_units_rules.xlsx"],
+  "sc_commodity": ["all commodity", "wheat"],
+  "sc_source": ["kg", "tonne"],
+  "sc_target": ["g", "kg"],
+  "sc_factor": ["1000", "1000"],
+  "sc_offset": ["0", "0"],
+
+  "sm_rule": ["all commodity"],
+  "sm_unitkey": ["kg"]
+}
