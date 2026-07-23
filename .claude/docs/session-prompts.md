@@ -294,33 +294,8 @@ the bug, its impact, why it was deferred, known risks, and when to revisit, plus
 prompt. **Remove an entry only when the bug is fixed.** Intentional R-divergences that cannot
 change pipeline output are documented inline / in `progress.md`, not here.
 
-### DB2 — `read_rule_table` CSV path unverified against R  *(deferred 2026-07-22)*
-
-- **Bug:** the `.csv` branch of `read_rule_table`
-  (`whep_digitize/postpro/utilities/templates.py`) uses `pl.read_csv(infer_schema_length=0)`,
-  which diverges from R `readr::read_csv(col_types = cols(.default = col_character()))`. readr's
-  default `na = c("", "NA")` maps both empty **and the literal string `"NA"`** to `NA`, whereas
-  polars keeps `"NA"` as the string `"NA"` (and treats empty fields as null). Quoting / whitespace
-  edge cases are likewise unverified. Only the `.xlsx` path has a parity test
-  (`tests/parity/test_utilities_parity.py`).
-- **Impact:** for a CSV rule file with `"NA"` / empty cells, the loaded rule table differs from R
-  → wrong match keys and misapplied / missing rules in clean & harmonize. Silent (no error).
-- **Why deferred:** rule files are XLSX in practice (the template writer emits `.xlsx`; no CSV
-  rule files are known in the corpus); aligning null/empty semantics needs an R-captured golden;
-  the utilities PR (#4) was already merged.
-- **Risk:** medium **if** CSV rule files exist; low otherwise (frequency unknown). Latent/silent.
-- **Revisit when:** before the pipeline loads any CSV rule file, or when wiring B6 /
-  clean_harmonize end-to-end parity over real rule files.
-
-```
-Close the read_rule_table CSV-path parity gap in whep_digitize/postpro/utilities/templates.py.
-Add a committed CSV rule fixture under tests/fixtures/synthetic/ with an empty cell, a literal
-"NA" cell, a quoted field containing a comma, and a leading-zero code ("007"). Extend the
-`utilities` CaptureSpec (or add a new one) to capture R `read_rule_table` on it and assert the
-polars output matches byte-for-byte. Align pl.read_csv with readr's col_character + default
-`na = c("", "NA")` (e.g. via null_values / missing_utf8_is_empty_string) so "NA" and empty cells
-map to null. Add a matching unit test in tests/postpro/test_utilities.py next to the xlsx cases.
-```
+*None currently.* (DB1 — CI fork deadlock — fixed in PR #10, 2026-07-23. DB2 — `read_rule_table`
+CSV parity — fixed in PR #11, 2026-07-23.)
 
 ---
 

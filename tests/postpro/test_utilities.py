@@ -151,6 +151,22 @@ def test_read_rule_table_csv_all_text(tmp_path: Path) -> None:
     assert rules.get_column("code").to_list() == ["007", "1000.0"]
 
 
+def test_read_rule_table_csv_maps_empty_and_literal_na_to_null(tmp_path: Path) -> None:
+    # Matches R readr's default na = c("", "NA"): both the empty cell and the literal "NA" become
+    # null, while a leading-zero code, a quoted comma, and an internal space survive verbatim.
+    csv_path = tmp_path / "clean_rules.csv"
+    csv_path.write_text(
+        "column_source,value_source_raw,value_target_raw\n"
+        "commodity,007,kg\n"
+        "commodity,,NA\n"
+        'commodity,"a,b",all commodity\n',
+        encoding="utf-8",
+    )
+    rules = read_rule_table(csv_path)
+    assert rules.get_column("value_source_raw").to_list() == ["007", None, "a,b"]
+    assert rules.get_column("value_target_raw").to_list() == ["kg", None, "all commodity"]
+
+
 def test_read_rule_table_unsupported_extension_raises(tmp_path: Path) -> None:
     bad = tmp_path / "rules.txt"
     bad.write_text("x", encoding="utf-8")

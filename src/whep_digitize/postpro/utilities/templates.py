@@ -42,6 +42,10 @@ _TEMPLATE_FILE_NAME = _CONSTANTS.postpro.clean_harmonize_template_file_name
 _OPTIONAL_RULE_COLUMN = _CONSTANTS.postpro.stage_source_value_column
 _STAGE_PREFIX_RE = re.compile(r"^(clean|harmonize)_")
 _RULE_EXTENSION_RE = re.compile(r"\.(xlsx|xls|csv)$")
+# readr's default `na = c("", "NA")`: R reads rule CSVs with ``readr::read_csv``, which maps both
+# empty cells and the literal string "NA" to NA. polars keeps "NA" as a string by default, so we
+# pass these explicitly for byte parity (an unset target/value cell must become null, not "NA").
+_CSV_NA_VALUES = ("", "NA")
 _GUIDANCE_NOTES = (
     "Fill all required columns.",
     "Column names must remain unchanged.",
@@ -68,7 +72,9 @@ class RulePayload:
 def read_rule_table(file_path: Path | str) -> pl.DataFrame:
     """Read a rule file all-as-text into a frame.
 
-    The Python port of R ``read_rule_table``.
+    The Python port of R ``read_rule_table``. For ``.csv`` files this matches R's
+    ``readr::read_csv(col_types = cols(.default = col_character()))`` — every column stays a
+    string and both empty cells and the literal ``"NA"`` become null (readr's default ``na``).
 
     Args:
         file_path: Path to a ``.csv`` / ``.xlsx`` / ``.xls`` rule file.
@@ -86,7 +92,7 @@ def read_rule_table(file_path: Path | str) -> pl.DataFrame:
 
     extension = path.suffix.lower().lstrip(".")
     if extension == "csv":
-        return pl.read_csv(path, infer_schema_length=0)
+        return pl.read_csv(path, infer_schema_length=0, null_values=list(_CSV_NA_VALUES))
     if extension in ("xlsx", "xls"):
         return _read_rule_workbook(path)
     raise ValidationError(f"Unsupported rule extension for {path}")
