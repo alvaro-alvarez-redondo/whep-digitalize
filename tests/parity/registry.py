@@ -69,6 +69,13 @@ _RULE_SUMMARIES = "r/2-postpro_pipeline/25-postpro_diagnostics/25-rule-summaries
 _STANDARDIZE_SUMMARIES = "r/2-postpro_pipeline/25-postpro_diagnostics/25-standardize-summaries.R"
 # Export processed-data: the high-performance TSV writer (data.table::fwrite(sep = "\t")).
 _WRITE_PROCESSED_TABLE = "r/3-export_pipeline/30-processed_data/03-write-processed-table-fast.R"
+# Export lists: layer detection (30/02) + the four 31-lists scripts (unique values, sheet
+# grouping, column resolution, cache).
+_COLLECT_LAYERS = "r/3-export_pipeline/30-processed_data/02-collect-layer-tables.R"
+_LISTS_01 = "r/3-export_pipeline/31-lists/01-sheet-order-and-infer.R"
+_LISTS_02 = "r/3-export_pipeline/31-lists/02-build-path-and-unique-values.R"
+_LISTS_03 = "r/3-export_pipeline/31-lists/03-resolve-and-compare.R"
+_LISTS_04 = "r/3-export_pipeline/31-lists/04-cache-and-write.R"
 
 # Stage-level (run_import_pipeline) golden: the orchestration body is replicated inline over
 # the whole corpus (R's run_import_pipeline auto-sources via here::here + auto-runs, which the
@@ -444,6 +451,49 @@ _EXPORT_PROCESSED_PREAMBLE = (
     "raw_bytes <- readBin(tmp, what = 'raw', n = file.info(tmp)$size)\n"
     "unlink(tmp)\n"
     "tsv_hex <- paste(sprintf('%02x', as.integer(raw_bytes)), collapse = '')"
+)
+
+# export_lists: build the four layer objects from the fixture, then run the real 31-lists logic
+# (collect -> by-sheet -> union -> resolve columns -> unique cache -> per-column sheet grouping).
+# The golden is captured as atomic vectors: per-(layer, column) unique values (drop-null +
+# code-point/radix sort + "(blank)" prepend — parity risk #7 on the unnitialized raw layer), the
+# union + resolved export columns, and per-column merged sheet names (the identical-layer grouping
+# and fixed order). The polars port must reproduce all of them.
+_EXPORT_LISTS_COLUMNS = ("continent", "polity", "commodity", "unit")
+_EXPORT_LISTS_EXPORTS: dict[str, str] = {
+    "union_columns": "union_columns",
+    "export_columns": "export_columns",
+    **{
+        f"uniq_{layer}_{column}": f"unique_cache[['{layer}']][['{column}']]"
+        for layer in ("raw", "clean", "normalize", "harmonize")
+        for column in _EXPORT_LISTS_COLUMNS
+    },
+    **{f"sheets_{column}": f"sheet_names_for('{column}')" for column in _EXPORT_LISTS_COLUMNS},
+}
+_EXPORT_LISTS_PREAMBLE = (
+    "mk <- function(x) as.character(x)\n"
+    "build_layer <- function(L) data.table::data.table("
+    "continent = mk(values[[L]]$continent), polity = mk(values[[L]]$polity), "
+    "commodity = mk(values[[L]]$commodity), unit = mk(values[[L]]$unit), "
+    "year = mk(values[[L]]$year), value = mk(values[[L]]$value))\n"
+    "objs <- list(whep_data_raw = build_layer('raw'), whep_data_clean = build_layer('clean'), "
+    "whep_data_normalize = build_layer('normalize'), "
+    "whep_data_harmonize = build_layer('harmonize'))\n"
+    "config <- list(export_config = list(lists_to_export = "
+    "c('continent','polity','commodity','unit','footnotes')))\n"
+    "layer_tables <- collect_layer_tables_for_export(data_objects = objs, "
+    "env = new.env(parent = emptyenv()))\n"
+    "layer_by_sheet <- build_layer_tables_by_sheet(layer_tables)\n"
+    "union_columns <- collect_union_columns(layer_by_sheet)\n"
+    "export_columns <- resolve_lists_export_columns(config, union_columns)\n"
+    "unique_cache <- build_column_unique_cache(layer_by_sheet, export_columns)\n"
+    "sheet_names_for <- function(col) {\n"
+    "  dts <- lapply(get_lists_sheet_order(), function(L) {\n"
+    "    v <- unique_cache[[L]][[col]]; if (is.null(v)) v <- character(0)\n"
+    "    data.table::data.table(value = v)\n"
+    "  })\n"
+    "  names(resolve_list_sheet_payloads(dts[[1]], dts[[2]], dts[[3]], dts[[4]]))\n"
+    "}"
 )
 
 CAPTURES: dict[str, CaptureSpec] = {
@@ -1133,6 +1183,23 @@ CAPTURES: dict[str, CaptureSpec] = {
             "auto-quoting (embedded tab / newline / quote, empty-string vs NA), and double "
             "formatting (15 sig figs, fixed notation under scipen=999, trailing '.0' dropped). "
             "The polars write_csv-based writer must reproduce these bytes byte-for-byte."
+        ),
+    ),
+    "export_lists": CaptureSpec(
+        module="export_lists",
+        r_sources=(_GENERAL_CONSTANTS, _COLLECT_LAYERS, _LISTS_01, _LISTS_02, _LISTS_03, _LISTS_04),
+        fixture="synthetic/export_lists_inputs.json",
+        preamble=_EXPORT_LISTS_PREAMBLE,
+        exports=_EXPORT_LISTS_EXPORTS,
+        description=(
+            "Column-centric unique-list export (31-lists/*.R) over four layer objects (raw + "
+            "clean/normalize/harmonize): per-(layer, column) unique values (drop-null, radix / "
+            "code-point sort, '(blank)' prepended when any NA — parity risk #7 on the "
+            "un-normalized raw layer), the sorted union of columns, the configured-column "
+            "resolution (lists_to_export intersect union, config order; a configured-but-absent "
+            "'footnotes' is dropped), and the identical-layer merge grouping + fixed sheet order "
+            "per column (e.g. continent -> raw + clean_normalize_harmonize; commodity -> "
+            "raw_clean + normalize_harmonize; unit -> raw_clean_normalize_harmonize)."
         ),
     ),
 }

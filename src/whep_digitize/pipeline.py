@@ -68,7 +68,7 @@ def run_pipeline(
     )
 
     alert_info("running stage: export")
-    export_result = run_export_pipeline(config, postpro_result)
+    export_result = run_export_pipeline(config, postpro_result, raw=import_result.data)
 
     elapsed = format_elapsed_time(time.perf_counter() - start)
     cleans = _pass_count(postpro_result.diagnostics.clean.multi_pass)

@@ -15,7 +15,6 @@ import pytest
 
 from whep_digitize.export.processed_data.export import (
     _FWRITE_EOL,
-    _format_double_r,
     build_processed_export_path,
     export_processed_data,
     write_processed_table,
@@ -23,6 +22,7 @@ from whep_digitize.export.processed_data.export import (
 from whep_digitize.export.processed_data.layers import collect_layer_tables_for_export
 from whep_digitize.general.config import Config
 from whep_digitize.general.errors import ValidationError
+from whep_digitize.general.helpers.numeric import format_double_r
 
 
 def _frame() -> pl.DataFrame:
@@ -178,13 +178,13 @@ def test_write_overwrites_by_default(tmp_path: Path) -> None:
     ],
 )
 def test_format_double_r(value: float, expected: str) -> None:
-    assert _format_double_r(value) == expected
+    assert format_double_r(value) == expected
 
 
 def test_format_double_r_special() -> None:
-    assert _format_double_r(float("nan")) is None
-    assert _format_double_r(float("inf")) == "Inf"
-    assert _format_double_r(float("-inf")) == "-Inf"
+    assert format_double_r(float("nan")) is None
+    assert format_double_r(float("inf")) == "Inf"
+    assert format_double_r(float("-inf")) == "-Inf"
 
 
 # --------------------------------------------------------------------------- orchestration

@@ -722,6 +722,47 @@ Golden = the **whole TSV as a hex string** (`export_processed_data` CaptureSpec 
 `tests/export/test_processed_data.py`, +1 parity) · 106 parity across 21 golden modules.
 **Remaining Track D:** `lists/` (`31-lists`) + export runner wiring (E3).
 
+## Track D — export / lists + runner — ✅ (2026-07-23)
+
+Ported `r/3-export_pipeline/31-lists/` and **wired the export runner** — Stage 3 is now
+module-complete (reachable end-to-end once the postpro runner E1 lands):
+
+- `lists/unique_values.py` (`01` + `02`): `LISTS_SHEET_ORDER`, `infer_layer_sheet_name`,
+  `compute_unique_column_values` (drop-null, code-point sort, `(blank)` prepended if any NA;
+  float columns rendered via `format_double_r`), `build_column_lists_export_path`
+  (`unique_<col>.xlsx` — the dead `list_suffix` constant is not used), `build_layer_tables_by_sheet`
+  (union multiple objects per sheet via `concat(how="diagonal")`), `collect_union_columns`.
+- `lists/merge.py` (`03`): `resolve_lists_export_columns` (config-order ∩ union), and
+  `resolve_list_sheet_payloads` — the identical-layer merge (equal value-sets share one sheet,
+  e.g. `raw_clean_normalize_harmonize`) with fixed discovery order. R compared normalized
+  data.tables; the port compares the already-deterministically-sorted value lists (same result).
+- `lists/write.py` (`04`): `build_column_unique_cache`, `write_column_lists_workbook`
+  (no-header, one-value-per-row multi-sheet `xlsxwriter` write == `writexl(col_names=FALSE)`),
+  `export_lists` (union → resolve → cache → **filename-collision guard** → sequential write).
+  Parallelism not ported (R only parallelizes under a non-default `future` plan; pipeline default
+  is sequential).
+- `export/runner.py`: `run_export_pipeline(config, result, *, raw=None, overwrite=True)` builds the
+  canonical `whep_data_{raw,clean,normalize,harmonize}` mapping (raw = `import_result.data`, passed
+  by `run_pipeline`; the other three from `PostproResult`), ensures the export dirs, writes both
+  families, returns a contract-checked `ExportResult`. `StageNotImplementedError` removed; the stale
+  `test_export_stage_pending` contract test deleted.
+
+**Parity strategy (xlsx can't be byte-compared).** The golden captures the *logical* layout as
+atomic vectors: per-(layer, column) unique values (the sort/`(blank)` risk), the union + resolved
+export columns, and per-column merged sheet names. Confirmed **polars `.sort()` == R
+`sort(method="radix")`** on the un-normalized raw layer including accented values (`Åland` sorts
+after ASCII — code point == C-locale == UTF-8 byte order), so risk #7 needs no override. The parity
+test also runs the real `export_lists`, reads the workbooks back with openpyxl, and asserts sheet
+names + cell values match. Committed fixture `export_lists_inputs.json`.
+
+**Refactor:** promoted the R `as.character`/`fwrite` double formatter to
+`general/helpers/numeric.format_double_r` (now shared by the TSV writer and the lists numeric
+branch); `processed_data/export.py` re-points to it (behavior unchanged).
+
+**Gates:** ruff clean · mypy strict clean (137 files) · **634 tests pass** (+54: 36 unit + 19
+parity, −1 stale) · 125 parity across 22 golden modules. **Track D complete.** Remaining: E1
+(postpro runner) → E2/E3 integration wiring of `run_pipeline`.
+
 ## Baseline metrics (autocode)
 
 | metric | value |
