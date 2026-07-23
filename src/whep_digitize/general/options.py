@@ -29,6 +29,11 @@ class RuntimeOptions(BaseSettings):
         import_parallel_workers: Worker count for parallel import; ``"auto"`` resolves
             to ``min(auto_max, cpu_count - 1)`` and ``1`` forces sequential
             (R ``whep.import.parallel_workers``).
+        export_parallel_workers: Worker count for the per-column unique-list workbook writes;
+            ``1`` (default) forces sequential, ``"auto"`` / ``N > 1`` write across a
+            ``ProcessPoolExecutor`` (deterministic — the workbooks are independent). Sequential
+            by default because R's default ``future`` plan is sequential and the workbooks are
+            small.
     """
 
     model_config: ClassVar[SettingsConfigDict] = SettingsConfigDict(
@@ -41,3 +46,4 @@ class RuntimeOptions(BaseSettings):
     progress_enabled: bool = True
     checkpointing_enabled: bool = False
     import_parallel_workers: int | Literal["auto"] = "auto"
+    export_parallel_workers: int | Literal["auto"] = 1

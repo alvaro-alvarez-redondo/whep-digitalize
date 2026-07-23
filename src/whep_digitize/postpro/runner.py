@@ -10,12 +10,11 @@ frames and the aggregate diagnostics (R attached ``clean`` / ``normalize`` and t
 ``pipeline_diagnostics`` list as ``data.table`` attributes of the harmonized table).
 
 Divergences from R (documented, output-preserving): R auto-sources its stage scripts and
-auto-runs on source — Python calls the ported functions directly. R's ``progressr`` progress
-bar (the nine ``progress()`` ticks + per-pass pulses) is cosmetic and is not wired here
-(progress lands with the stage runners in Phase 5); it does not change the result. The R
-diagnostics ``outputs`` list nested the persisted audit paths under ``audit_output_path``; the
-typed contract's flat ``Mapping[str, Path]`` lifts those four paths to the top level alongside
-the resolved directories, the template, and the data-audit path.
+auto-runs on source — Python calls the ported functions directly. R's ``progressr`` nine hard
+``progress()`` ticks are reproduced with a gated :func:`stage_progress` bar (the per-pass pulses
+are dropped — cosmetic only). The R diagnostics ``outputs`` list nested the persisted audit paths
+under ``audit_output_path``; the typed contract's flat ``Mapping[str, Path]`` lifts those four
+paths to the top level alongside the resolved directories, the template, and the data-audit path.
 
 R source: ``r/2-postpro_pipeline/run_postpro_pipeline.R``.
 """
@@ -29,6 +28,7 @@ import polars as pl
 from whep_digitize.contracts import LayerDiagnostics, PostproDiagnostics, PostproResult
 from whep_digitize.general.config import Config
 from whep_digitize.general.constants import get_pipeline_constants
+from whep_digitize.general.helpers.progress import stage_progress
 from whep_digitize.general.helpers.sorting import sort_pipeline_stage_dt
 from whep_digitize.general.options import RuntimeOptions
 from whep_digitize.postpro.audit.audit import audit_data_output
@@ -52,6 +52,7 @@ from whep_digitize.postpro.utilities.output_roots import (
 from whep_digitize.postpro.utilities.templates import generate_postpro_rule_templates
 
 _DEFAULT_DATASET_NAME = get_pipeline_constants().dataset_default_name
+_MESSAGES = get_pipeline_constants().progress.messages["postpro"]
 
 
 def run_postpro_pipeline(
@@ -83,47 +84,59 @@ def run_postpro_pipeline(
         WhepError: If preflight checks fail, or a multi-pass cycle is detected under the
             ``"abort"`` cycle policy.
     """
-    _ = options  # no options consumed by post-processing; kept for signature parity
+    resolved_options = options or RuntimeOptions()
     resolved_dataset_name = dataset_name if dataset_name is not None else _DEFAULT_DATASET_NAME
 
-    # 1. audit — coerce ``value`` to Float64, export invalid-cell highlights (invalid rows kept).
-    audited = audit_data_output(raw, config).audited
+    with stage_progress(
+        "post-process", total=9, enabled=resolved_options.progress_enabled
+    ) as progress:
+        # 1. audit — coerce ``value`` to Float64, export invalid-cell highlights (rows kept).
+        progress.step(_MESSAGES["audit"])
+        audited = audit_data_output(raw, config).audited
 
-    # 2. resolve the audit output roots (the tree is created by step 3, mirroring R).
-    audit_paths = get_postpro_output_paths(config)
+        # 2. resolve the audit output roots (the tree is created by step 3, mirroring R).
+        progress.step(_MESSAGES["init_dirs"])
+        audit_paths = get_postpro_output_paths(config)
 
-    # 3. templates — creates the output subtree and writes the clean/harmonize rule template.
-    template_path = generate_postpro_rule_templates(config, overwrite=True)
+        # 3. templates — create the output subtree and write the clean/harmonize rule template.
+        progress.step(_MESSAGES["templates"])
+        template_path = generate_postpro_rule_templates(config, overwrite=True)
 
-    # 4. + 5. preflight — collect the rule-directory / naming / expected-column checks and assert.
-    preflight = collect_postpro_preflight(config, dataset_columns=audited.columns)
-    assert_postpro_preflight(preflight)
+        # 4. + 5. preflight — collect the rule-directory / naming / expected-column checks + assert.
+        progress.step(_MESSAGES["collect_preflight"])
+        preflight = collect_postpro_preflight(config, dataset_columns=audited.columns)
+        progress.step(_MESSAGES["assert_preflight"])
+        assert_postpro_preflight(preflight)
 
-    # 6. clean layer (multi-pass), then canonical sort.
-    clean_layer = run_cleaning_layer_batch(audited, config, dataset_name=resolved_dataset_name)
-    clean_dt = sort_pipeline_stage_dt(clean_layer.data)
+        # 6. clean layer (multi-pass), then canonical sort.
+        progress.step(_MESSAGES["clean"])
+        clean_layer = run_cleaning_layer_batch(audited, config, dataset_name=resolved_dataset_name)
+        clean_dt = sort_pipeline_stage_dt(clean_layer.data)
 
-    # 7. standardize-units layer, then canonical sort.
-    standardize_layer = run_standardize_units_layer_batch(clean_dt, config)
-    normalize_dt = sort_pipeline_stage_dt(standardize_layer.data)
+        # 7. standardize-units layer, then canonical sort.
+        progress.step(_MESSAGES["standardize"])
+        standardize_layer = run_standardize_units_layer_batch(clean_dt, config)
+        normalize_dt = sort_pipeline_stage_dt(standardize_layer.data)
 
-    # 8. harmonize layer (multi-pass) on the normalized frame, then canonical sort.
-    harmonize_layer = run_harmonize_layer_batch(
-        normalize_dt, config, dataset_name=resolved_dataset_name
-    )
-    harmonize_dt = sort_pipeline_stage_dt(harmonize_layer.data)
+        # 8. harmonize layer (multi-pass) on the normalized frame, then canonical sort.
+        progress.step(_MESSAGES["harmonize"])
+        harmonize_layer = run_harmonize_layer_batch(
+            normalize_dt, config, dataset_name=resolved_dataset_name
+        )
+        harmonize_dt = sort_pipeline_stage_dt(harmonize_layer.data)
 
-    # 9. persist per-stage audit workbooks + the last-rule-wins overwrite subset.
-    output_paths = persist_postpro_audit(
-        clean_audit_dt=clean_layer.audit,
-        harmonize_audit_dt=harmonize_layer.audit,
-        standardize_audit_dt=standardize_layer.audit,
-        standardize_rules_dt=standardize_layer.layer_rules,
-        final_stage_dt=harmonize_dt,
-        last_rule_wins_overwrites_dt=harmonize_layer.overwrite_events,
-        config=config,
-        standardize_matched_rule_counts_dt=standardize_layer.matched_rule_counts,
-    )
+        # 9. persist per-stage audit workbooks + the last-rule-wins overwrite subset.
+        progress.step(_MESSAGES["persist"])
+        output_paths = persist_postpro_audit(
+            clean_audit_dt=clean_layer.audit,
+            harmonize_audit_dt=harmonize_layer.audit,
+            standardize_audit_dt=standardize_layer.audit,
+            standardize_rules_dt=standardize_layer.layer_rules,
+            final_stage_dt=harmonize_dt,
+            last_rule_wins_overwrites_dt=harmonize_layer.overwrite_events,
+            config=config,
+            standardize_matched_rule_counts_dt=standardize_layer.matched_rule_counts,
+        )
 
     diagnostics = PostproDiagnostics(
         clean=clean_layer.diagnostics,

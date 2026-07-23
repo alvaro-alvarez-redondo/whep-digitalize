@@ -391,8 +391,10 @@ class Progress:
                         "read_file": "reading {name}",
                         "transforming": "transforming source files",
                         "transform_file": "transforming {name}",
-                        "splitting": "splitting validation groups",
+                        "dropping": "dropping null-value rows",
                         "validating": "validating transformed records",
+                        "splitting": "consolidating validation groups",
+                        "sorting": "sorting to canonical order",
                     }
                 ),
                 "postpro": MappingProxyType(

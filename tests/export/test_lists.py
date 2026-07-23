@@ -35,6 +35,7 @@ from whep_digitize.export.lists.write import (
 )
 from whep_digitize.general.config import Config
 from whep_digitize.general.errors import ValidationError
+from whep_digitize.general.options import RuntimeOptions
 
 
 def _configure_lists(config: Config, columns: tuple[str, ...]) -> Config:
@@ -321,3 +322,56 @@ def test_export_lists_filename_collision_raises(config: Config) -> None:
     }
     with pytest.raises(ValidationError, match="same workbook filename"):
         export_lists(wide, objects)
+
+
+def _export_to_dir(
+    config: Config,
+    columns: tuple[str, ...],
+    objects: dict[str, pl.DataFrame],
+    lists_dir: Path,
+    *,
+    options: RuntimeOptions | None = None,
+) -> dict[str, Path]:
+    """Run ``export_lists`` writing into ``lists_dir`` (isolates repeated runs for comparison)."""
+    lists_dir.mkdir(parents=True, exist_ok=True)
+    export = dataclasses.replace(config.paths.data.export, lists=lists_dir)
+    data = dataclasses.replace(config.paths.data, export=export)
+    cfg = dataclasses.replace(
+        config,
+        paths=dataclasses.replace(config.paths, data=data),
+        export_config=dataclasses.replace(config.export_config, lists_to_export=columns),
+    )
+    return export_lists(cfg, objects, options=options)
+
+
+def test_export_lists_bytes_reproducible(config: Config, tmp_path: Path) -> None:
+    # Same inputs -> byte-identical workbooks (the pinned created-date defeats xlsxwriter's clock).
+    objects = _demo_objects()
+    first = _export_to_dir(config, ("polity", "year"), objects, tmp_path / "run1")
+    second = _export_to_dir(config, ("polity", "year"), objects, tmp_path / "run2")
+    assert list(first) == list(second)
+    for column, path in first.items():
+        assert path.read_bytes() == second[column].read_bytes()
+
+
+def test_export_lists_parallel_matches_sequential(config: Config, tmp_path: Path) -> None:
+    # ProcessPoolExecutor writes must be byte-identical to sequential (deterministic order + files).
+    objects = _demo_objects()
+    columns = ("polity", "year")
+    sequential = _export_to_dir(
+        config,
+        columns,
+        objects,
+        tmp_path / "seq",
+        options=RuntimeOptions(export_parallel_workers=1),
+    )
+    parallel = _export_to_dir(
+        config,
+        columns,
+        objects,
+        tmp_path / "par",
+        options=RuntimeOptions(export_parallel_workers=2),
+    )
+    assert list(sequential) == list(parallel)
+    for column, path in sequential.items():
+        assert path.read_bytes() == parallel[column].read_bytes()
