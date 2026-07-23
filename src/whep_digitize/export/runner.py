@@ -16,6 +16,10 @@ from whep_digitize.export.processed_data.export import export_processed_data
 from whep_digitize.general.config import Config
 from whep_digitize.general.constants import get_pipeline_constants
 from whep_digitize.general.directories import ensure_directories_exist
+from whep_digitize.general.helpers.progress import stage_progress
+from whep_digitize.general.options import RuntimeOptions
+
+_MESSAGES = get_pipeline_constants().progress.messages["export"]
 
 
 def run_export_pipeline(
@@ -24,6 +28,7 @@ def run_export_pipeline(
     *,
     raw: pl.DataFrame | None = None,
     overwrite: bool = True,
+    options: RuntimeOptions | None = None,
 ) -> ExportResult:
     """Export processed-data TSVs and per-column unique-list workbooks.
 
@@ -38,10 +43,13 @@ def run_export_pipeline(
         raw: The raw import layer (R ``whep_data_raw``); included in the unique-list export when
             provided. ``None`` omits the raw sheet.
         overwrite: Whether to overwrite existing output files.
+        options: Runtime options; defaults are used when ``None`` (gates the progress bar and
+            resolves the list-export worker count).
 
     Returns:
         An :class:`~whep_digitize.contracts.ExportResult` of object/column names to written paths.
     """
+    resolved_options = options or RuntimeOptions()
     object_names = get_pipeline_constants().object_names
     data_objects: dict[str, pl.DataFrame] = {}
     if raw is not None:
@@ -52,8 +60,13 @@ def run_export_pipeline(
 
     ensure_directories_exist([config.paths.data.export.processed, config.paths.data.export.lists])
 
-    processed_paths = export_processed_data(config, data_objects, overwrite=overwrite)
-    lists_paths = export_lists(config, data_objects, overwrite=overwrite)
+    with stage_progress("export", total=2, enabled=resolved_options.progress_enabled) as progress:
+        progress.step(_MESSAGES["processed"])
+        processed_paths = export_processed_data(config, data_objects, overwrite=overwrite)
+        progress.step(_MESSAGES["lists"])
+        lists_paths = export_lists(
+            config, data_objects, overwrite=overwrite, options=resolved_options
+        )
 
     export_result = ExportResult(processed_paths=processed_paths, lists_paths=lists_paths)
     assert_export_paths_contract(export_result)

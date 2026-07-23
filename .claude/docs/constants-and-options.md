@@ -58,6 +58,7 @@ instance to `run_pipeline(options=...)` or let stages construct the default.
 | `progress_enabled` | `WHEP_PROGRESS_ENABLED` | `True` | show the `rich` progress display |
 | `checkpointing_enabled` | `WHEP_CHECKPOINTING_ENABLED` | `False` | persist per-stage checkpoints |
 | `import_parallel_workers` | `WHEP_IMPORT_PARALLEL_WORKERS` | `"auto"` | import worker count (`"auto"`→`min(8, cpu-1)`; `1`=sequential) |
+| `export_parallel_workers` | `WHEP_EXPORT_PARALLEL_WORKERS` | `1` | unique-list workbook-write worker count (`1`=sequential; `"auto"`/`N`=deterministic `ProcessPoolExecutor`) |
 
 The project-root override `WHEP_PROJECT_ROOT` (read by `general.paths.project_root`) forces
 where `data/` is resolved.

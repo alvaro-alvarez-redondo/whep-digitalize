@@ -50,7 +50,7 @@ def run_pipeline(
     effective_options = options if options is not None else RuntimeOptions()
 
     alert_info("running stage: general")
-    config = run_general_pipeline(dataset_name=dataset_name, root=root)
+    config = run_general_pipeline(dataset_name=dataset_name, root=root, options=effective_options)
 
     alert_info("running stage: ingest")
     import_result = run_import_pipeline(config, effective_options)
@@ -64,7 +64,9 @@ def run_pipeline(
     )
 
     alert_info("running stage: export")
-    export_result = run_export_pipeline(config, postpro_result, raw=import_result.data)
+    export_result = run_export_pipeline(
+        config, postpro_result, raw=import_result.data, options=effective_options
+    )
 
     elapsed = format_elapsed_time(time.perf_counter() - start)
     cleans = _pass_count(postpro_result.diagnostics.clean.multi_pass)

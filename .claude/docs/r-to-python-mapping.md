@@ -16,7 +16,7 @@ naive port.
 | `openxlsx` | styled per-cell `.xlsx` (audit highlight) | **openpyxl** (`PatternFill`, cell styles) |
 | `readr::parse_double` / `read_csv` | numeric parse; all-text CSV | `cast(Float64, strict=False)`; `pl.read_csv(infer_schema_length=0)` |
 | `data.table::fwrite(sep="\t")` | processed TSV | `pl.DataFrame.write_csv(separator="\t")` |
-| `stringi` / `stringr` | string ops, transliteration | polars `.str` namespace + `re`; **anyascii** for `Latin-ASCII` |
+| `stringi` / `stringr` | string ops, transliteration | polars `.str` namespace + `re`; **generated ICU `Latin-ASCII` table** (`helpers._latin_ascii`) |
 | `future` / `future.apply` | parallelism | `concurrent.futures.ProcessPoolExecutor` |
 | `progressr` | progress bars + pulses | `rich.progress` |
 | `cli` | errors / warnings / status | exceptions (`whep_digitize.general.errors`) / `warnings` / `rich` |
@@ -55,14 +55,18 @@ naive port.
 ## Parity risks (ranked) — the things that will silently break a port
 
 1. **`Latin-ASCII; Lower` transliteration** (`stringi::stri_trans_general`). Used in string
-   normalization (match keys) AND header normalization. Ported with `anyascii` +
-   `str.lower()` in `helpers.strings`. **`anyascii` ≈ ICU but not identical** for ligatures
-   and symbols (`œ`, `ß`, `½`). Match correctness depends on byte-identical keys →
-   **golden-parity test on the real dataset before any stage relies on it.** An **override
-   table now lives in `strings.transliterate_ascii_lower`** (`_ICU_IDENTITY_CODEPOINTS` +
-   `_ICU_REMAP`): ICU is conservative (leaves most symbols → stripped downstream) while anyascii
-   is aggressive (`£`→`GBP`, `°`→`deg`, superscript `¹`→`1`, `½`→`1/2` vs ICU `" 1/2"`). Confirmed
-   on the corpus (`belgian congo¹`); extend the table if a golden run surfaces a new codepoint.
+   normalization (match keys) AND header normalization. **RESOLVED** — `helpers.strings.
+   transliterate_ascii_lower` now maps through `helpers._latin_ascii.LATIN_ASCII_MAP`, a static
+   table **generated from R/stringi (ICU 74.1)** over the BMP + math-alphanumerics, so it is
+   byte-identical to ICU by construction (a codepoint absent from the table is one ICU leaves
+   unchanged → the downstream non-alnum step turns it into a space). This replaced the earlier
+   `anyascii` + override-table approximation, which diverged on the full dataset — `anyascii`
+   ASCII-ifies *every* script (Greek `γ`→`g`, modifier `ᵀ`→`t`) while ICU leaves non-Latin
+   scripts / super-scripts / modifiers alone but still expands Latin symbols (`®`→`(R)`→`r`).
+   The full-pipeline R↔Python diff over the frozen dataset is now **byte-identical** (processed
+   TSV) / **content-identical** (list workbooks); the string-normalization golden guards the
+   divergent codepoints (`γ`, `®`, `¹ᵀ`, Cyrillic). Regenerate the table against R if its ICU
+   version changes.
 2. **`melt` vs `unpivot` column-drop semantics** + the R attribute-carried `whep_year_columns`.
    Recompute year columns explicitly; verify `unpivot` drops exactly the non-id/non-measure
    columns `melt` did.

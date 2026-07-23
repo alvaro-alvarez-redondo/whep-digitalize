@@ -17,14 +17,18 @@ from __future__ import annotations
 
 from whep_digitize.contracts import ImportDiagnostics, ImportResult
 from whep_digitize.general.config import Config
+from whep_digitize.general.constants import get_pipeline_constants
 from whep_digitize.general.errors import ValidationError
 from whep_digitize.general.helpers.frames import drop_na_value_rows
+from whep_digitize.general.helpers.progress import stage_progress
 from whep_digitize.general.helpers.sorting import sort_pipeline_stage_dt
 from whep_digitize.general.options import RuntimeOptions
 from whep_digitize.ingest.file_io.discovery import discover_pipeline_files
 from whep_digitize.ingest.output.consolidate import consolidate_audited_dt
 from whep_digitize.ingest.output.validate import validate_long_dt_by_document
 from whep_digitize.ingest.transform.processing import read_transform_pipeline_files
+
+_MESSAGES = get_pipeline_constants().progress.messages["import"]
 
 
 def run_import_pipeline(
@@ -53,17 +57,25 @@ def run_import_pipeline(
     if file_list.height == 0:
         raise ValidationError("no excel files were found. pipeline terminated")
 
-    fused = read_transform_pipeline_files(file_list, config, resolved_options)
-    long_raw = drop_na_value_rows(
-        fused.transformed.long_raw, enabled=resolved_options.drop_na_values
-    )
-
-    validation = validate_long_dt_by_document(long_raw, config, current_year=current_year)
-
-    # Zero rows -> zero document groups: consolidate an empty list (R keeps this shape).
-    audited = [validation.data] if validation.data.height > 0 else []
-    consolidated = consolidate_audited_dt(audited, config)
-    data = sort_pipeline_stage_dt(consolidated.data)
+    with stage_progress("import", total=5, enabled=resolved_options.progress_enabled) as progress:
+        progress.step(_MESSAGES["reading"])
+        # `progress.pulse` refreshes the description per read/transform tick (advance=0), so the
+        # long fused phase stays visibly alive without advancing the five hard steps.
+        fused = read_transform_pipeline_files(
+            file_list, config, resolved_options, progressor=progress.pulse
+        )
+        progress.step(_MESSAGES["dropping"])
+        long_raw = drop_na_value_rows(
+            fused.transformed.long_raw, enabled=resolved_options.drop_na_values
+        )
+        progress.step(_MESSAGES["validating"])
+        validation = validate_long_dt_by_document(long_raw, config, current_year=current_year)
+        progress.step(_MESSAGES["splitting"])
+        # Zero rows -> zero document groups: consolidate an empty list (R keeps this shape).
+        audited = [validation.data] if validation.data.height > 0 else []
+        consolidated = consolidate_audited_dt(audited, config)
+        progress.step(_MESSAGES["sorting"])
+        data = sort_pipeline_stage_dt(consolidated.data)
 
     return ImportResult(
         data=data,

@@ -26,8 +26,9 @@ see [constants-and-options.md](constants-and-options.md).
 
 | Module | Key API | R source | |
 |--------|---------|----------|---|
-| `strings.py` | `normalize_text`, `normalize_string` (series), `clean_footnote`, `clean_footnote_column`, `normalize_filename` | `02-string-normalization.R` | done |
-| `numeric.py` | `coerce_numeric`, `coerce_numeric_series` | `02-numeric-coercion.R` | done |
+| `strings.py` | `normalize_text`, `normalize_string` (series), `clean_footnote`, `clean_footnote_column`, `normalize_filename`, `transliterate_ascii_lower` (via the ICU table) | `02-string-normalization.R` | done |
+| `_latin_ascii.py` | `LATIN_ASCII_MAP` — generated ICU `Latin-ASCII` table (ICU 74.1); the exact transliteration ground truth | `stri_trans_general` | done |
+| `numeric.py` | `coerce_numeric`, `coerce_numeric_series`, `format_double_r` | `02-numeric-coercion.R` | done |
 | `sorting.py` | `sort_pipeline_stage_dt(frame, sort_columns=None)` | `02-sorting.R` | done |
 | `frames.py` | `drop_na_value_rows(frame, value_column, *, enabled)` | `02-data-cleaning.R` | done |
 | `checkpoints.py` | `save_checkpoint`, `load_checkpoint`, `clear_checkpoints` (parquet/pickle) | `02-checkpoints.R` | done |
@@ -35,6 +36,7 @@ see [constants-and-options.md](constants-and-options.md).
 | `tokens.py` | `extract_yearbook(parts)`, `extract_commodity(parts, start_index=None)` | `02-token-extraction.R` | done |
 | `assertions.py` | `require(condition, message)`, `require_columns(...)` | `02-assertions.R` | done |
 | `console.py` | `alert_info/success/warning/error`, `get_console` (rich; ASCII-safe) | `02-progress.R` (console part) | done |
+| `progress.py` | `stage_progress(label, total, *, enabled)` ctx mgr → `StageProgress` (`step`/`pulse`); gated `rich.progress` bars | `02-progress.R` (`progressr`) | done |
 
 R helpers intentionally **not** ported: `02-data-table.R` (coercion — no-op in polars),
 `02-environment.R` (global-env assignment — replaced by return values),
