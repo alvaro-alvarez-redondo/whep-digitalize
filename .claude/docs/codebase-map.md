@@ -135,6 +135,8 @@ Ports `r/3-export_pipeline/`.
 
 `tests/conftest.py` provides `project_dir`, `config`, `sample_long_df` fixtures (the
 analogue of `tests/test_helper.R`). Per-stage suites mirror the package layout:
-`tests/general/` [done], `tests/contracts/` [done], `tests/ingest|postpro|export/`
-[pending]. Golden parity fixtures live under `tests/golden/` (gitignored; regenerated
-from R). Mark parity tests `@pytest.mark.parity`.
+`tests/general/` [done], `tests/contracts/` [done], `tests/ingest/` [done],
+`tests/postpro/` [done], `tests/parity/` [done]; `tests/export/` [pending] (Track D).
+Golden parity fixtures live under `tests/golden/` (gitignored; regenerated from R). Mark
+parity tests `@pytest.mark.parity`. Current totals: **546 tests pass** (105 parity across
+19 committed goldens).
