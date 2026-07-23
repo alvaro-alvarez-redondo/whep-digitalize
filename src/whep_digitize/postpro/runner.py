@@ -1,20 +1,57 @@
-"""Stage 2 runner — ports ``r/2-postpro_pipeline/run_postpro_pipeline.R``.
+"""Stage 2 runner — the Python port of ``run_postpro_pipeline.R``.
 
-.. note::
-   Scaffolded, not yet migrated. Implements the 9-step orchestration
-   (audit -> init -> templates -> preflight -> clean -> standardize -> harmonize ->
-   diagnostics -> persist) once the sub-packages are ported. See
-   ``.claude/docs/migration-roadmap.md`` (Phase 3).
+Runs the deterministic 9-step post-processing orchestration (R
+``run_postpro_pipeline_batch``): audit the raw import frame, resolve the audit output roots,
+generate the rule templates, collect + assert the preflight checks, then run the clean →
+standardize-units → harmonize layers (each sorted to the canonical row order), and finally
+persist the per-stage audit workbooks. Returns a typed
+:class:`~whep_digitize.contracts.PostproResult` carrying the clean / normalize / harmonize
+frames and the aggregate diagnostics (R attached ``clean`` / ``normalize`` and the
+``pipeline_diagnostics`` list as ``data.table`` attributes of the harmonized table).
+
+Divergences from R (documented, output-preserving): R auto-sources its stage scripts and
+auto-runs on source — Python calls the ported functions directly. R's ``progressr`` progress
+bar (the nine ``progress()`` ticks + per-pass pulses) is cosmetic and is not wired here
+(progress lands with the stage runners in Phase 5); it does not change the result. The R
+diagnostics ``outputs`` list nested the persisted audit paths under ``audit_output_path``; the
+typed contract's flat ``Mapping[str, Path]`` lifts those four paths to the top level alongside
+the resolved directories, the template, and the data-audit path.
+
+R source: ``r/2-postpro_pipeline/run_postpro_pipeline.R``.
 """
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import polars as pl
 
-from whep_digitize.contracts import PostproResult
+from whep_digitize.contracts import LayerDiagnostics, PostproDiagnostics, PostproResult
 from whep_digitize.general.config import Config
-from whep_digitize.general.errors import StageNotImplementedError
+from whep_digitize.general.constants import get_pipeline_constants
+from whep_digitize.general.helpers.sorting import sort_pipeline_stage_dt
 from whep_digitize.general.options import RuntimeOptions
+from whep_digitize.postpro.audit.audit import audit_data_output
+from whep_digitize.postpro.clean_harmonize.layer_runner import (
+    run_cleaning_layer_batch,
+    run_harmonize_layer_batch,
+)
+from whep_digitize.postpro.diagnostics.output import persist_postpro_audit
+from whep_digitize.postpro.diagnostics.preflight import (
+    assert_postpro_preflight,
+    collect_postpro_preflight,
+)
+from whep_digitize.postpro.standardize_units.orchestration import (
+    StandardizeDiagnostics,
+    run_standardize_units_layer_batch,
+)
+from whep_digitize.postpro.utilities.output_roots import (
+    PostproOutputPaths,
+    get_postpro_output_paths,
+)
+from whep_digitize.postpro.utilities.templates import generate_postpro_rule_templates
+
+_DEFAULT_DATASET_NAME = get_pipeline_constants().dataset_default_name
 
 
 def run_postpro_pipeline(
@@ -25,18 +62,110 @@ def run_postpro_pipeline(
 ) -> PostproResult:
     """Audit, clean, standardize units, and harmonize the raw import frame.
 
+    The Python port of R ``run_postpro_pipeline_batch`` — the nine deterministic steps:
+    audit → resolve output roots → templates → collect preflight → assert preflight → clean →
+    standardize → harmonize → persist. Each layer frame is sorted to the canonical row order
+    (R ``sort_pipeline_stage_dt``) before feeding the next stage.
+
     Args:
         raw: The raw long frame from the ingest stage.
         config: The resolved pipeline configuration.
-        dataset_name: Dataset name; defaults to the config's dataset name.
-        options: Runtime options; defaults are used when ``None``.
+        dataset_name: Dataset identifier for audit/event metadata; defaults to the constant
+            default (R ``get_pipeline_constants()$dataset_default_name``) when ``None``.
+        options: Runtime options; accepted for cross-stage signature parity (the R
+            post-processing stage takes no options and reads its controls from ``config``).
 
     Returns:
-        A :class:`PostproResult` with the harmonized/clean/normalize frames and
-        diagnostics.
+        A :class:`PostproResult` with the harmonized / clean / normalize frames and the
+        aggregate :class:`~whep_digitize.contracts.PostproDiagnostics`.
 
     Raises:
-        StageNotImplementedError: Always, until the post-processing stage is migrated.
+        WhepError: If preflight checks fail, or a multi-pass cycle is detected under the
+            ``"abort"`` cycle policy.
     """
-    _ = (raw, config, dataset_name, options)  # contract placeholders until migrated
-    raise StageNotImplementedError("postpro", "r/2-postpro_pipeline/")
+    _ = options  # no options consumed by post-processing; kept for signature parity
+    resolved_dataset_name = dataset_name if dataset_name is not None else _DEFAULT_DATASET_NAME
+
+    # 1. audit — coerce ``value`` to Float64, export invalid-cell highlights (invalid rows kept).
+    audited = audit_data_output(raw, config).audited
+
+    # 2. resolve the audit output roots (the tree is created by step 3, mirroring R).
+    audit_paths = get_postpro_output_paths(config)
+
+    # 3. templates — creates the output subtree and writes the clean/harmonize rule template.
+    template_path = generate_postpro_rule_templates(config, overwrite=True)
+
+    # 4. + 5. preflight — collect the rule-directory / naming / expected-column checks and assert.
+    preflight = collect_postpro_preflight(config, dataset_columns=audited.columns)
+    assert_postpro_preflight(preflight)
+
+    # 6. clean layer (multi-pass), then canonical sort.
+    clean_layer = run_cleaning_layer_batch(
+        audited, config, dataset_name=resolved_dataset_name
+    )
+    clean_dt = sort_pipeline_stage_dt(clean_layer.data)
+
+    # 7. standardize-units layer, then canonical sort.
+    standardize_layer = run_standardize_units_layer_batch(clean_dt, config)
+    normalize_dt = sort_pipeline_stage_dt(standardize_layer.data)
+
+    # 8. harmonize layer (multi-pass) on the normalized frame, then canonical sort.
+    harmonize_layer = run_harmonize_layer_batch(
+        normalize_dt, config, dataset_name=resolved_dataset_name
+    )
+    harmonize_dt = sort_pipeline_stage_dt(harmonize_layer.data)
+
+    # 9. persist per-stage audit workbooks + the last-rule-wins overwrite subset.
+    output_paths = persist_postpro_audit(
+        clean_audit_dt=clean_layer.audit,
+        harmonize_audit_dt=harmonize_layer.audit,
+        standardize_audit_dt=standardize_layer.audit,
+        standardize_rules_dt=standardize_layer.layer_rules,
+        final_stage_dt=harmonize_dt,
+        last_rule_wins_overwrites_dt=harmonize_layer.overwrite_events,
+        config=config,
+        standardize_matched_rule_counts_dt=standardize_layer.matched_rule_counts,
+    )
+
+    diagnostics = PostproDiagnostics(
+        clean=clean_layer.diagnostics,
+        standardize_units=_as_layer_diagnostics(standardize_layer.diagnostics),
+        harmonize=harmonize_layer.diagnostics,
+        outputs=_build_output_paths(audit_paths, template_path, output_paths, config),
+    )
+    return PostproResult(
+        harmonize=harmonize_dt,
+        clean=clean_dt,
+        normalize=normalize_dt,
+        diagnostics=diagnostics,
+    )
+
+
+def _as_layer_diagnostics(standardize: StandardizeDiagnostics) -> LayerDiagnostics:
+    """Reduce the richer standardize diagnostics to the shared layer contract (no multi-pass)."""
+    return LayerDiagnostics(
+        matched_count=standardize.matched_count,
+        unmatched_count=standardize.unmatched_count,
+        status=standardize.status,
+        messages=standardize.messages,
+        multi_pass=None,
+    )
+
+
+def _build_output_paths(
+    audit_paths: PostproOutputPaths,
+    template_path: Path,
+    persisted_paths: dict[str, Path],
+    config: Config,
+) -> dict[str, Path]:
+    """Assemble the flat diagnostics ``outputs`` mapping (R ``diagnostics$outputs``)."""
+    return {
+        **persisted_paths,
+        "audit_root_dir": audit_paths.audit_root_dir,
+        "audit_dir": audit_paths.audit_dir,
+        "diagnostics_dir": audit_paths.diagnostics_dir,
+        "templates_dir": audit_paths.templates_dir,
+        "runtime_cache_dir": audit_paths.runtime_cache_dir,
+        "clean_harmonize_template_path": template_path,
+        "data_audit_output_path": config.paths.data.audit.audit_file_path,
+    }

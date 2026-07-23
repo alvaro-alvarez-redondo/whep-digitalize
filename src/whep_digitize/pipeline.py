@@ -1,12 +1,8 @@
 """Top-level orchestrator — the Python port of ``r/run_pipeline.R``.
 
-Runs the four stages in fixed order and reports elapsed time plus the clean/harmonize
-pass counts. Unlike the R version there is no auto-run-on-import: :func:`run_pipeline` is
-an explicit call.
-
-During the foundation phase only stage 0 (``general``) is implemented; the remaining
-stages raise :class:`~whep_digitize.general.errors.StageNotImplementedError` until
-migrated (the CLI reports this cleanly).
+Runs the four stages (general -> ingest -> postpro -> export) in fixed order and reports
+elapsed time plus the clean/harmonize pass counts. Unlike the R version there is no
+auto-run-on-import: :func:`run_pipeline` is an explicit call.
 """
 
 from __future__ import annotations
