@@ -24,6 +24,7 @@ path is deferred to the runner).
 
 from __future__ import annotations
 
+import multiprocessing
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
@@ -52,6 +53,14 @@ from whep_digitize.ingest.transform.reshape import (
 )
 
 _MESSAGES = get_pipeline_constants().progress.messages["import"]
+
+# Force the "spawn" start method for worker processes. On Linux the default is "fork", which
+# deadlocks when the parent has already initialized polars' (Rayon) thread pool: the child
+# inherits copies of mutexes locked by threads that do not exist in it, so it never returns and
+# ``executor.map`` blocks forever (this is what hangs CI to its 6h timeout). "spawn" starts a
+# fresh interpreter per worker — already the default on Windows/macOS, where this path is
+# parity-verified — so batch execution behaves identically across platforms.
+_MP_SPAWN_CONTEXT = multiprocessing.get_context("spawn")
 
 FileRow = Mapping[str, object]
 Progressor = Callable[[str], None]
@@ -192,7 +201,7 @@ def _run_parallel(
         options=options,
     )
     try:
-        with ProcessPoolExecutor(max_workers=workers) as executor:
+        with ProcessPoolExecutor(max_workers=workers, mp_context=_MP_SPAWN_CONTEXT) as executor:
             results: list[_BatchResult] = []
             # map preserves submission order -> deterministic regardless of completion order.
             mapped = executor.map(worker, batch_objects)
