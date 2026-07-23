@@ -14,7 +14,8 @@ adjustments reproduce R ``data.table::fwrite(sep = "\t")`` exactly (verified aga
   ``as.character()`` under the pipeline's ``scipen = 999``: **15 significant figures, fixed
   notation, trailing zeros and a bare ``.0`` dropped** (``1.0`` -> ``1``, ``1000.0`` ->
   ``1000``). polars' shortest-round-trip formatter instead keeps ``1.0`` and switches to
-  ``1e16``-style scientific. :func:`_format_double_r` reproduces the R rendering, so numeric
+  ``1e16``-style scientific. :func:`~whep_digitize.general.helpers.numeric.format_double_r`
+  reproduces the R rendering, so numeric
   columns are stringified before the write. For the finite decimals the pipeline actually
   produces (parsed inputs times exact unit factors) this is byte-identical to ``fwrite``; the
   two can only diverge in the 15th digit for *arbitrary* >=16-significant-figure doubles, which
@@ -23,11 +24,9 @@ adjustments reproduce R ``data.table::fwrite(sep = "\t")`` exactly (verified aga
 
 from __future__ import annotations
 
-import math
 import os
 import re
 from collections.abc import Mapping
-from decimal import ROUND_HALF_EVEN, Decimal, localcontext
 from pathlib import Path
 
 import polars as pl
@@ -35,12 +34,11 @@ import polars as pl
 from whep_digitize.export.processed_data.layers import collect_layer_tables_for_export
 from whep_digitize.general.config import Config
 from whep_digitize.general.errors import ValidationError
+from whep_digitize.general.helpers.numeric import format_double_r
 from whep_digitize.general.helpers.strings import normalize_filename
 
 # ``data.table::fwrite`` eol default: "\r\n" on Windows, "\n" on unix (``.Platform$OS.type``).
 _FWRITE_EOL: str = "\r\n" if os.name == "nt" else "\n"
-# R ``as.character(<double>)`` / ``fwrite`` precision (see module docstring).
-_R_SIGNIFICANT_DIGITS = 15
 
 
 def build_processed_export_path(config: Config, object_name: str) -> Path:
@@ -165,34 +163,5 @@ def _format_float_series(series: pl.Series) -> pl.Series:
     uniques = series.drop_nulls().unique().to_list()
     if not uniques:
         return series.cast(pl.String)
-    mapping = {value: _format_double_r(value) for value in uniques}
+    mapping = {value: format_double_r(value) for value in uniques}
     return series.replace_strict(mapping, default=None, return_dtype=pl.String)
-
-
-def _format_double_r(value: float) -> str | None:
-    """Render one double exactly like R ``as.character()`` / ``fwrite`` under ``scipen = 999``.
-
-    15 significant figures, fixed (never scientific) notation, with trailing zeros and a bare
-    trailing ``.`` removed. ``NaN`` maps to ``None`` (an empty field); the pipeline produces
-    nulls rather than ``NaN``, so this is defensive.
-
-    Args:
-        value: The double to render.
-
-    Returns:
-        The string rendering, or ``None`` for ``NaN`` (written as an empty field).
-    """
-    if math.isnan(value):
-        return None
-    if math.isinf(value):
-        return "Inf" if value > 0 else "-Inf"
-    if value == 0.0:  # collapses -0.0 to "0", matching R
-        return "0"
-    with localcontext() as ctx:
-        ctx.prec = _R_SIGNIFICANT_DIGITS
-        ctx.rounding = ROUND_HALF_EVEN
-        rounded = +Decimal(value)  # round the exact binary value to 15 significant figures
-    text = format(rounded, "f")  # fixed notation; never scientific
-    if "." in text:
-        text = text.rstrip("0").rstrip(".")
-    return text

@@ -158,13 +158,14 @@ content-hash cycle detection. (The postpro **runner** that calls this — E1 —
 **Exit:** clean and harmonize layers parity-correct on rule fixtures, including multi-pass
 convergence and cycle detection.
 
-### Phase 4 — Export (Stage 3)
+### Phase 4 — Export (Stage 3) — ✅ DONE (2026-07-23)
 
-- **4a** `processed_data.layers` + `export` (layer detection + TSV).
-- **4b** `lists.unique_values` + `merge` + `write` (per-column multi-sheet xlsx, identical
-  layer merging). `export.runner` + `assert_export_paths_contract`.
+- **4a** ✅ `processed_data.layers` + `export` (layer detection + fwrite-byte-parity TSV).
+- **4b** ✅ `lists.unique_values` + `merge` + `write` (per-column multi-sheet xlsx, identical
+  layer merging). `export.runner` (wired, returns `ExportResult`) + `assert_export_paths_contract`.
 
-**Exit:** processed TSVs and unique-list workbooks parity-correct against fixtures.
+**Exit:** ✅ processed TSVs and unique-list workbooks parity-correct against fixtures (byte-parity
+on TSVs; logical layout — sheet names + values — on xlsx, which no writer reproduces byte-for-byte).
 
 ### Phase 5 — Orchestration, parallelism, progress, end-to-end parity
 

@@ -116,19 +116,20 @@ All 27 library modules below are **[done]** (Tracks B + C); only the runner wiri
 
 ---
 
-## Stage 3 — export (`whep_digitize.export`) — [processed_data done · lists + runner pending]
+## Stage 3 — export (`whep_digitize.export`) — [done]
 
-Public: `runner.run_export_pipeline(config, result, *, overwrite=True) -> ExportResult`.
-Ports `r/3-export_pipeline/`. `processed_data/` is done; `lists/` and the runner wiring (E3)
-still raise `StageNotImplementedError`.
+Public: `runner.run_export_pipeline(config, result, *, raw=None, overwrite=True) -> ExportResult`
+(**wired**: builds the `whep_data_{raw,clean,normalize,harmonize}` mapping, ensures the export
+dirs, writes processed-data TSVs + unique-list workbooks, asserts the paths contract). Ports
+`r/3-export_pipeline/`. Reachable end-to-end once the postpro runner (E1) lands.
 
 | Planned module | Functions to port | R source | Risk |
 |----------------|-------------------|----------|------|
 | `processed_data/layers.py` **[done]** | `collect_layer_tables_for_export` (name-based detect from an explicit mapping; excludes `_wide_raw`/`_post_processed`; sorted) | `30-.../02-collect-layer-tables.R` | LOW-MED |
-| `processed_data/export.py` **[done]** | `export_processed_data` (harmonize-only default), `build_processed_export_path`, `write_processed_table` (fwrite byte-parity: platform eol + R-`as.character` float format) | `30-.../01,03,04` | LOW-MED |
-| `lists/unique_values.py` | `compute_unique_column_values`, union columns | `31-.../02` | MEDIUM |
-| `lists/merge.py` | identical-layer merging, sheet order | `31-.../03` | MEDIUM |
-| `lists/write.py` | `export_lists`, per-column multi-sheet xlsx | `31-.../04,01` | MED-HIGH |
+| `processed_data/export.py` **[done]** | `export_processed_data` (harmonize-only default), `build_processed_export_path`, `write_processed_table` (fwrite byte-parity: platform eol + R-`as.character` float format via `helpers.numeric.format_double_r`) | `30-.../01,03,04` | LOW-MED |
+| `lists/unique_values.py` **[done]** | `LISTS_SHEET_ORDER`, `infer_layer_sheet_name`, `compute_unique_column_values` (drop-null, code-point sort, `(blank)` prepend), `build_column_lists_export_path`, `build_layer_tables_by_sheet`, `collect_union_columns` | `31-.../01,02` | MEDIUM |
+| `lists/merge.py` **[done]** | `resolve_lists_export_columns`, `resolve_list_sheet_payloads` (identical-layer merge, fixed sheet order) | `31-.../03` | MEDIUM |
+| `lists/write.py` **[done]** | `build_column_unique_cache`, `write_column_lists_workbook` (no-header multi-sheet `xlsxwriter`), `export_lists` (filename-collision guard; sequential) | `31-.../04,01` | MED-HIGH |
 
 ---
 
@@ -137,7 +138,7 @@ still raise `StageNotImplementedError`.
 `tests/conftest.py` provides `project_dir`, `config`, `sample_long_df` fixtures (the
 analogue of `tests/test_helper.R`). Per-stage suites mirror the package layout:
 `tests/general/` [done], `tests/contracts/` [done], `tests/ingest/` [done],
-`tests/postpro/` [done], `tests/parity/` [done]; `tests/export/` [processed_data done] (Track D).
+`tests/postpro/` [done], `tests/parity/` [done]; `tests/export/` [done] (Track D).
 Golden parity fixtures live under `tests/golden/` (gitignored; regenerated from R). Mark
-parity tests `@pytest.mark.parity`. Current totals: **580 tests pass** (106 parity across
-21 golden modules).
+parity tests `@pytest.mark.parity`. Current totals: **634 tests pass** (125 parity across
+22 golden modules).

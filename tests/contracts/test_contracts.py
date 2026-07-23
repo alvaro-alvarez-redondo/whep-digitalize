@@ -1,4 +1,4 @@
-"""Tests for cross-stage contracts and the not-yet-migrated stage stubs."""
+"""Tests for cross-stage contracts and the not-yet-migrated postpro-runner stub."""
 
 from __future__ import annotations
 
@@ -13,7 +13,6 @@ from whep_digitize.contracts import (
     ImportResult,
     assert_export_paths_contract,
 )
-from whep_digitize.export.runner import run_export_pipeline
 from whep_digitize.general.config import Config
 from whep_digitize.general.errors import ContractError, StageNotImplementedError
 from whep_digitize.postpro.runner import run_postpro_pipeline
@@ -46,8 +45,3 @@ def test_assert_export_paths_contract_rejects_empty() -> None:
 def test_postpro_stage_pending(config: Config) -> None:
     with pytest.raises(StageNotImplementedError):
         run_postpro_pipeline(pl.DataFrame({"value": [1.0]}), config)
-
-
-def test_export_stage_pending(config: Config) -> None:
-    with pytest.raises(StageNotImplementedError):
-        run_export_pipeline(config, result=None)  # type: ignore[arg-type]
