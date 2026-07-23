@@ -100,9 +100,7 @@ def run_postpro_pipeline(
     assert_postpro_preflight(preflight)
 
     # 6. clean layer (multi-pass), then canonical sort.
-    clean_layer = run_cleaning_layer_batch(
-        audited, config, dataset_name=resolved_dataset_name
-    )
+    clean_layer = run_cleaning_layer_batch(audited, config, dataset_name=resolved_dataset_name)
     clean_dt = sort_pipeline_stage_dt(clean_layer.data)
 
     # 7. standardize-units layer, then canonical sort.

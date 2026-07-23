@@ -98,9 +98,7 @@ def test_layer_columns_and_row_count(layer: str, result: PostproResult) -> None:
 @pytest.mark.parity
 @pytest.mark.parametrize("layer", _LAYERS)
 @pytest.mark.parametrize("column", _STRING_COLUMNS)
-def test_layer_string_column_matches_golden(
-    layer: str, column: str, result: PostproResult
-) -> None:
+def test_layer_string_column_matches_golden(layer: str, column: str, result: PostproResult) -> None:
     expected = pl.Series(column, _gold(f"{layer}_{column}"), dtype=pl.String)
     assert_series_equal(
         _layer(result, layer).get_column(column), expected, check_dtypes=True, check_names=True
