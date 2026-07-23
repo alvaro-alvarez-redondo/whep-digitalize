@@ -294,30 +294,6 @@ the bug, its impact, why it was deferred, known risks, and when to revisit, plus
 prompt. **Remove an entry only when the bug is fixed.** Intentional R-divergences that cannot
 change pipeline output are documented inline / in `progress.md`, not here.
 
-### DB1 — CI `quality` workflow hangs to the 6h timeout  *(deferred 2026-07-22)*
-
-- **Bug:** the GitHub Actions "CI / quality" workflow never completes — every run is cancelled at
-  the 6-hour max-runtime. Confirmed via `gh run list`: ingest #2, the rule-engine merge, audit #3,
-  and utilities #4 all show `cancelled` at ~6h0m (one older run failed fast, 16s).
-- **Impact:** remote CI never goes green, so every PR merges on **local gates only**; ~18h of
-  Actions minutes wasted per PR (3 jobs × 6h); a genuine CI failure would be masked.
-- **Why deferred:** infra, not a module port; needs `.github/workflows` investigation; does not
-  block migration (local ruff / ruff-format / mypy / pytest are authoritative).
-- **Risk:** no functional pipeline risk; undetected 3.11/3.12/3.13-specific regressions; wasted
-  minutes. Also spawned as a session task chip (may not persist across app restarts — this entry
-  is the durable record).
-- **Revisit when:** before treating CI as a real merge gate, or opportunistically.
-
-```
-Fix the hanging GitHub Actions "CI / quality" workflow in alvaro-alvarez-redondo/whep-digitalize.
-Every run is cancelled at the 6h timeout (see `gh run list`). Read .github/workflows/*.yml, find
-the hanging step (a --watch/serve/interactive command, a job awaiting input, or a missing
-`timeout-minutes`), and make the quality job run `ruff check .`, `ruff format --check .`, `mypy`,
-and `pytest -q` then exit within minutes. Add `timeout-minutes` as a backstop. Ensure the parity
-tests (`-m parity`) skip cleanly without R/goldens (they already do when goldens are absent).
-Verify by pushing a branch and confirming the run completes green in minutes.
-```
-
 ### DB2 — `read_rule_table` CSV path unverified against R  *(deferred 2026-07-22)*
 
 - **Bug:** the `.csv` branch of `read_rule_table`
