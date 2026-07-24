@@ -68,24 +68,54 @@ def _r_str(value: object) -> str:
     return "NA" if value is None else str(value)
 
 
-def _mandatory_field_errors(work: pl.DataFrame, mandatory_cols: list[str]) -> list[_ErrorRecord]:
-    """Per document, column-major then row: rows with a null/blank mandatory value."""
-    records: list[_ErrorRecord] = []
-    for col_index, col in enumerate(mandatory_cols, start=1):
-        missing = work.filter(pl.col(col).is_null() | (pl.col(col) == "")).select(
-            "document", "_document_rank", "_row_id_in_doc", "_global_row"
+_ERROR_FRAME_SCHEMA: dict[str, type[pl.DataType]] = {
+    "document_rank": pl.Int64,
+    "type_rank": pl.Int64,
+    "key_a": pl.Int64,
+    "key_b": pl.Int64,
+    "message": pl.String,
+}
+
+
+def _mandatory_field_error_frame(work: pl.DataFrame, mandatory_cols: list[str]) -> pl.DataFrame:
+    """Per document, column-major then row: rows with a null/blank mandatory value (vectorized).
+
+    Built entirely in polars — the message via ``pl.format`` — rather than a per-row Python loop:
+    on the real dataset these are the overwhelming majority of the error volume (150k+). The four
+    sort keys and the message text match the R error-table rows exactly.
+    """
+    frames = [
+        work.filter(pl.col(col).is_null() | (pl.col(col) == "")).select(
+            pl.col("_document_rank").cast(pl.Int64).alias("document_rank"),
+            pl.lit(_TYPE_MANDATORY, dtype=pl.Int64).alias("type_rank"),
+            pl.lit(col_index, dtype=pl.Int64).alias("key_a"),
+            pl.col("_global_row").cast(pl.Int64).alias("key_b"),
+            pl.format(
+                "missing mandatory value in document '{}', row_id '{}', column '{}'",
+                pl.col("document").fill_null("NA"),
+                pl.col("_row_id_in_doc"),
+                pl.lit(col),
+            ).alias("message"),
         )
-        for row in missing.iter_rows(named=True):
-            message = (
-                f"missing mandatory value in document '{_r_str(row['document'])}', "
-                f"row_id '{row['_row_id_in_doc']}', column '{col}'"
-            )
-            records.append(
-                _ErrorRecord(
-                    row["_document_rank"], _TYPE_MANDATORY, col_index, row["_global_row"], message
-                )
-            )
-    return records
+        for col_index, col in enumerate(mandatory_cols, start=1)
+    ]
+    return pl.concat(frames) if frames else pl.DataFrame(schema=_ERROR_FRAME_SCHEMA)
+
+
+def _records_to_frame(records: list[_ErrorRecord]) -> pl.DataFrame:
+    """Materialize the low-volume year / duplicate check records as an error frame."""
+    if not records:
+        return pl.DataFrame(schema=_ERROR_FRAME_SCHEMA)
+    return pl.DataFrame(
+        {
+            "document_rank": [record.document_rank for record in records],
+            "type_rank": [record.type_rank for record in records],
+            "key_a": [record.key_a for record in records],
+            "key_b": [record.key_b for record in records],
+            "message": [record.message for record in records],
+        },
+        schema=_ERROR_FRAME_SCHEMA,
+    )
 
 
 def _year_value_errors(work: pl.DataFrame, max_year: int) -> list[_ErrorRecord]:
@@ -213,14 +243,17 @@ def validate_long_dt_by_document(
         work.select("document", "_document_rank").unique().iter_rows()
     )
 
-    records = _mandatory_field_errors(work, mandatory_cols)
-    records += _year_value_errors(work, max_year)
-    records += _duplicate_errors(work, doc_rank_map)
-
-    # Stable 4-key sort (R setorder); insertion order matches R's error-table order for any ties.
-    records.sort(
-        key=lambda record: (record.document_rank, record.type_rank, record.key_a, record.key_b)
-    )
-    errors = tuple(record.message for record in records)
+    # Assemble every check's errors as one frame and sort by the 4 keys in polars (R setorder).
+    # The keys are unique within each check (mandatory: global row + column; year: appearance +
+    # kind; duplicate: group index), so the ordering is fully key-determined — byte-identical to
+    # the previous stable Python sort. ``maintain_order`` keeps it deterministic regardless.
+    error_frame = pl.concat(
+        [
+            _mandatory_field_error_frame(work, mandatory_cols),
+            _records_to_frame(_year_value_errors(work, max_year)),
+            _records_to_frame(_duplicate_errors(work, doc_rank_map)),
+        ]
+    ).sort(["document_rank", "type_rank", "key_a", "key_b"], maintain_order=True)
+    errors = tuple(error_frame.get_column("message").to_list())
 
     return ValidationResult(data=work.select(data_columns), errors=errors)

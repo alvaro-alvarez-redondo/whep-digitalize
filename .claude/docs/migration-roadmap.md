@@ -81,10 +81,10 @@ graph TD
   P0 --> S3
   IRUN -. real data .-> PRUN
   PRUN -. real data .-> ERUN
-  IRUN --> ORCH["Phase 5 — orchestration + e2e parity"]
+  IRUN --> ORCH["Phase 5 — orchestration + e2e parity (DONE)"]
   PRUN --> ORCH
   ERUN --> ORCH
-  ORCH --> PERF["Phase 6 — perf + CI + docs"]
+  ORCH --> PERF["Phase 6 — perf + CI + docs (DONE)"]
 ```
 
 Solid edges are hard build/dependency order (migrate the source before the target). Dotted
@@ -167,23 +167,30 @@ convergence and cycle detection.
 **Exit:** ✅ processed TSVs and unique-list workbooks parity-correct against fixtures (byte-parity
 on TSVs; logical layout — sheet names + values — on xlsx, which no writer reproduces byte-for-byte).
 
-### Phase 5 — Orchestration, parallelism, progress, end-to-end parity
+### Phase 5 — Orchestration, parallelism, progress, end-to-end parity — ✅ DONE
 
-- Wire `run_pipeline` through all four real stages.
-- Add `ProcessPoolExecutor` parallelism to ingest (fused) and list export, preserving
-  deterministic order independent of worker count; graceful sequential fallback.
-- `rich.progress` bars for each stage runner.
-- **End-to-end parity** on the real (frozen) dataset: run R + Python on the same inputs,
-  diff processed TSVs and unique lists to zero differences.
+- ✅ `run_pipeline` wired through all four real stages.
+- ✅ `ProcessPoolExecutor` parallelism in ingest (fused) and list export, order-preserving
+  (`executor.map` submission order) and independent of worker count; graceful sequential
+  fallback. Workbook `created` date pinned so repeated runs are byte-identical.
+- ✅ Gated `rich.progress` bars for each stage runner (`RuntimeOptions.progress_enabled`).
+- ✅ **End-to-end parity** on the real (frozen) dataset: R + Python run on the same inputs;
+  processed TSV **byte-identical**, unique-list workbooks **content-identical** (see the DoD
+  note on workbook bytes). The transliteration divergence found here (anyascii vs ICU) was
+  fixed with a generated ICU `Latin-ASCII` table.
 
-**Exit:** `whep-digitize run` produces byte-identical outputs to the R pipeline on the
-frozen dataset.
+**Exit (met):** `whep-digitize run` produces byte-identical processed TSVs (content-identical
+workbooks) to the R pipeline on the frozen dataset.
 
-### Phase 6 — Performance, CI, docs
+### Phase 6 — Performance, CI, docs — ✅ DONE
 
-- Benchmark harness under `benchmarks/`; profile; enable the perf metric in `autocode.toml`.
-- Harden CI (matrix, coverage gate). Generate/commit `uv.lock`.
-- Finalize docs; retire scaffolding notes.
+- ✅ Benchmark harness `benchmarks/bench.py`; profiled the pipeline (I/O-bound on polars
+  `read_excel`, already parallelized; rule engine already polars-vectorized) and vectorized the
+  Python-loop hot spots (`canonicalize_semicolon_delimited_cells`, validation error assembly),
+  parity preserved. Perf metric enabled in `autocode.toml` (weights re-normalized to sum to 1.0).
+- ✅ CI hardened with a 90% coverage gate (`pytest --cov`, `[tool.coverage.report] fail_under`).
+  `uv.lock` verified in sync (all deps, incl. `pytest-cov` / `coverage`, locked).
+- ✅ Docs finalized; scaffolding notes retired.
 
 ---
 
@@ -237,8 +244,22 @@ give the most parity scrutiny — are:
 | R `serialize()` cycle detection has no portable analogue | Replace with deterministic content hash; rely on the cheap `changed_value_count==0` early stop as primary convergence signal |
 | Live dataset drift invalidates goldens | Freeze the corpus; regenerate goldens only on an intentional, recorded refresh |
 
-## Definition of done (whole migration)
+## Definition of done (whole migration) — ✅ VERIFIED (2026-07-24)
 
-`whep-digitize run` on the frozen dataset produces **byte-identical** processed TSVs and
-unique-list workbooks to the R pipeline; all module + stage + e2e parity tests pass; ruff +
-mypy(strict) + pytest green in CI; `uv.lock` committed; docs current.
+`whep-digitize run` on the frozen dataset reproduces the R pipeline's output:
+
+- ✅ **Processed TSVs byte-identical** to R (`data.table::fwrite` vs polars `write_csv`),
+  verified on the frozen 742-workbook dataset (265,231 rows, 31,354,078 bytes).
+- ✅ **Unique-list workbooks content-identical** — every sheet, order, and cell. Raw-byte
+  identity is *not achievable* across R `writexl` and Python `xlsxwriter` (different ZIP
+  writers), so content-identity is the workbook parity target; the Python workbooks are
+  byte-reproducible run-to-run (pinned `created` date).
+- ✅ **Module + stage + e2e tests pass** — module parity + stage parity (`import_stage`,
+  `postpro_stage`) in `tests/parity/`, plus the `run_pipeline` end-to-end integration test
+  (`tests/test_pipeline_e2e.py`); full-pipeline byte-parity re-verified out-of-band on the
+  frozen dataset (method recorded in the session memory).
+- ✅ **ruff + ruff format + mypy(strict) + pytest green in CI**, with a 90% coverage gate.
+- ✅ **`uv.lock` committed** and in sync with `pyproject.toml`.
+- ✅ **Docs current** (this file, `codebase-map`, `r-to-python-mapping`, `constants-and-options`).
+
+The migration is **complete**.

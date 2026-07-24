@@ -1,0 +1,97 @@
+"""End-to-end integration test for the top-level ``run_pipeline`` orchestrator.
+
+Exercises the full ``general -> ingest -> postpro -> export`` wiring over the committed fixture
+corpus + postpro rule fixtures (so the multi-pass rule engine fires), asserting a valid
+:class:`ExportResult` with the processed-data TSV and the per-column unique-list workbooks
+written to disk. Stage- and module-level *parity* (vs the R golden) is covered by
+``tests/parity/`` — this guards the orchestration glue itself (which those stage tests bypass),
+and full-pipeline byte-parity over the frozen dataset is verified out-of-band (see
+``.claude`` docs / ``benchmarks``).
+"""
+
+from __future__ import annotations
+
+import shutil
+from pathlib import Path
+
+import polars as pl
+
+from whep_digitize.contracts import ExportResult
+from whep_digitize.general.options import RuntimeOptions
+from whep_digitize.pipeline import run_pipeline
+
+_FIXTURES = Path(__file__).parent / "fixtures"
+_LONG_COLUMNS = [
+    "hemisphere",
+    "continent",
+    "polity",
+    "commodity",
+    "variable",
+    "unit",
+    "year",
+    "value",
+    "notes",
+    "footnotes",
+    "yearbook",
+    "document",
+]
+
+
+def _assemble_import_tree(root: Path) -> None:
+    """Lay out ``<root>/data/1-import`` = fixture corpus (raw) + postpro rule fixtures."""
+    import_dir = root / "data" / "1-import"
+    import_dir.mkdir(parents=True)
+    shutil.copytree(_FIXTURES / "corpus", import_dir / "10-raw_import")
+    shutil.copytree(_FIXTURES / "rule_files_postpro" / "clean", import_dir / "11-clean_import")
+    shutil.copytree(
+        _FIXTURES / "rule_files_postpro" / "harmonize", import_dir / "13-harmonize_import"
+    )
+
+
+def test_run_pipeline_end_to_end(tmp_path: Path) -> None:
+    _assemble_import_tree(tmp_path)
+
+    result = run_pipeline(
+        root=tmp_path,
+        options=RuntimeOptions(progress_enabled=False, import_parallel_workers=1),
+    )
+
+    assert isinstance(result, ExportResult)
+
+    # Processed data: the harmonize layer only (R export_layers default), written + non-empty.
+    assert list(result.processed_paths) == ["whep_data_harmonize"]
+    tsv = result.processed_paths["whep_data_harmonize"]
+    assert tsv.is_file() and tsv.stat().st_size > 0
+    lines = tsv.read_text(encoding="utf-8").splitlines()
+    assert lines[0].split("\t") == _LONG_COLUMNS
+    assert len(lines) > 1  # header + at least one data row
+
+    # Per-column unique-list workbooks: all written and non-empty.
+    assert result.lists_paths
+    for path in result.lists_paths.values():
+        assert path.is_file() and path.stat().st_size > 0
+
+
+def test_run_pipeline_e2e_deterministic(tmp_path: Path) -> None:
+    """Same inputs -> byte-identical processed TSV (the pipeline's determinism guarantee)."""
+    options = RuntimeOptions(progress_enabled=False, import_parallel_workers=1)
+
+    first_root = tmp_path / "run_a"
+    first_root.mkdir()
+    _assemble_import_tree(first_root)
+    first = run_pipeline(root=first_root, options=options)
+    first_tsv = first.processed_paths["whep_data_harmonize"].read_bytes()
+
+    second_root = tmp_path / "run_b"
+    second_root.mkdir()
+    _assemble_import_tree(second_root)
+    second = run_pipeline(root=second_root, options=options)
+    second_tsv = second.processed_paths["whep_data_harmonize"].read_bytes()
+
+    assert first_tsv == second_tsv
+    # Parses back to a non-empty frame with the canonical schema (all-text read, no inference).
+    frame = pl.read_csv(
+        first.processed_paths["whep_data_harmonize"], separator="\t", infer_schema_length=0
+    )
+    assert frame.columns == _LONG_COLUMNS
+    assert frame.height > 0
