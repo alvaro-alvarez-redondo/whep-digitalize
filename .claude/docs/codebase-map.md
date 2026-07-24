@@ -1,9 +1,9 @@
 # Codebase map
 
-Where every function lives (or will live), by stage. Use this as a lookup index instead of
-grepping. **[done]** = implemented + tested; **[scaffold]** = package + contract exist,
-logic pending (see [migration-roadmap.md](migration-roadmap.md)). Risk = migration
-difficulty (see [r-to-python-mapping.md](r-to-python-mapping.md)).
+Where every function lives, by stage. Use this as a lookup index instead of grepping. Every
+stage below is **[done]** — implemented, tested, and parity-verified against R; the migration
+is **complete** (see [migration-roadmap.md](migration-roadmap.md)). Risk = the original
+migration difficulty (see [r-to-python-mapping.md](r-to-python-mapping.md)).
 
 For architecture and data flow see [architecture.md](architecture.md); for constants/options
 see [constants-and-options.md](constants-and-options.md).
@@ -142,6 +142,13 @@ dirs, writes processed-data TSVs + unique-list workbooks, asserts the paths cont
 analogue of `tests/test_helper.R`). Per-stage suites mirror the package layout:
 `tests/general/` [done], `tests/contracts/` [done], `tests/ingest/` [done],
 `tests/postpro/` [done], `tests/parity/` [done]; `tests/export/` [done] (Track D).
+`tests/test_pipeline_e2e.py` [done] exercises the top-level `run_pipeline` orchestration.
 Golden parity fixtures live under `tests/golden/` (gitignored; regenerated from R). Mark
-parity tests `@pytest.mark.parity`. Current totals: **634 tests pass** (125 parity across
-22 golden modules).
+parity tests `@pytest.mark.parity`. Current totals: **682 tests pass** (166 parity);
+`ruff` + `mypy` + a 90% CI coverage gate green.
+
+## Benchmarks (`benchmarks/`)
+
+`bench.py` times the full `run_pipeline` on a frozen dataset and prints `PIPELINE_SECONDS: <n>`
+(min over `WHEP_BENCH_ITERATIONS` runs). It is the autocode `performance` metric
+(`autocode.toml`) and is read-only to the autocode loop.

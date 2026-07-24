@@ -44,8 +44,10 @@ def canonicalize_semicolon_delimited_cells(
     """Canonicalize each ``;``-delimited cell of a Series (dedupe + radix-sort tokens).
 
     The Python port of R ``canonicalize_semicolon_delimited_cells``. Missing / blank cells map to
-    ``None``. The canonical form is computed once per distinct value and mapped back (these
-    annotation columns are low-cardinality), matching R's memoized implementation.
+    ``None``. The scalar-Python canonicalization is computed once per *distinct* value and mapped
+    back vectorized (``unique()`` + ``replace_strict``) — the polars-idiomatic form of R's memoized
+    implementation, avoiding a Python loop over every row (these annotation columns are
+    low-cardinality). Nulls pass through as ``None``.
 
     Args:
         values: The cell values (any dtype; cast to string).
@@ -54,16 +56,14 @@ def canonicalize_semicolon_delimited_cells(
     Returns:
         A ``String`` Series of canonicalized values, carrying the input's name.
     """
-    cache: dict[str, str | None] = {}
-    canonicalized: list[str | None] = []
-    for value in values.cast(pl.String).to_list():
-        if value is None:
-            canonicalized.append(None)
-            continue
-        if value not in cache:
-            cache[value] = _canonicalize_cell(value, delimiter)
-        canonicalized.append(cache[value])
-    return pl.Series(values.name, canonicalized, dtype=pl.String)
+    string_values = values.cast(pl.String)
+    mapping = {
+        value: _canonicalize_cell(value, delimiter)
+        for value in string_values.drop_nulls().unique().to_list()
+    }
+    if not mapping:
+        return string_values
+    return string_values.replace_strict(mapping, default=None, return_dtype=pl.String)
 
 
 def canonicalize_post_loop_annotation_columns(dataset: pl.DataFrame) -> pl.DataFrame:

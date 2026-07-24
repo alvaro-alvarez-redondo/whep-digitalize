@@ -11,7 +11,7 @@ or by hand:
 
 1. Read the R source + its entry in [codebase-map.md](codebase-map.md) (R source + risk).
 2. Read [r-to-python-mapping.md](r-to-python-mapping.md) for the idioms and parity risks.
-3. Implement in the scaffolded module, honoring the stage's contract (`contracts.py`).
+3. Implement in the target module, honoring the stage's contract (`contracts.py`).
 4. Write tests (happy / edge / error) + a `@pytest.mark.parity` test vs R golden output.
 5. Run the gates (ruff, mypy, pytest). Update the codebase-map entry to **[done]**.
 

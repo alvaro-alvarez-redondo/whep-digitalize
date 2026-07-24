@@ -119,3 +119,6 @@ branch = true
 [tool.coverage.report]
 show_missing = true
 skip_covered = false
+# CI coverage gate. The floor sits a couple points below the ~92% CI sees (parity tests skip
+# there — goldens are gitignored), so it guards against regressions without being brittle.
+fail_under = 90
